@@ -1,0 +1,59 @@
+# Cluster Configuration - Fetch public keys and deploy rippled.cfg
+
+- name: Get list of other nodes in this environment
+  ansible.builtin.set_fact:
+    other_env_hosts: "{{ groups['env_' + env_name] | default([]) | difference([inventory_hostname]) }}"
+
+- name: Initialize cluster_node_keys
+  ansible.builtin.set_fact:
+    cluster_node_keys: []
+
+- name: Fetch each other node's public key from var_secret_name
+  ansible.builtin.set_fact:
+    cluster_node_keys: "{{ cluster_node_keys + [other_var.validation_public_key] }}"
+  vars:
+    other_var: "{{ lookup('amazon.aws.secretsmanager_secret', hostvars[item].rippled_var_secret_name, region=ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}') | from_json }}"
+  loop: "{{ other_env_hosts }}"
+  when: other_var.validation_public_key is defined
+  ignore_errors: true
+  no_log: true
+
+- name: Deploy rippled.cfg for validator
+  ansible.builtin.template:
+    src: rippled-validator.cfg.j2
+    dest: /etc/opt/ripple/rippled.cfg
+    owner: rippled
+    group: rippled
+    mode: "0640"
+  when: tags.Validator == 'true'
+  notify: Restart rippled
+
+- name: Deploy rippled.cfg for node
+  ansible.builtin.template:
+    src: rippled-node.cfg.j2
+    dest: /etc/opt/ripple/rippled.cfg
+    owner: rippled
+    group: rippled
+    mode: "0640"
+  when: tags.Validator != 'true'
+  notify: Restart rippled
+
+- name: Deploy validators.txt for testnet
+  ansible.builtin.template:
+    src: validators-testnet.txt.j2
+    dest: /etc/opt/ripple/validators.txt
+    owner: rippled
+    group: rippled
+    mode: "0644"
+  when: env_name == 'testnet'
+  notify: Restart rippled
+
+- name: Deploy validators.txt for mainnet
+  ansible.builtin.template:
+    src: validators-mainnet.txt.j2
+    dest: /etc/opt/ripple/validators.txt
+    owner: rippled
+    group: rippled
+    mode: "0644"
+  when: env_name == 'mainnet'
+  notify: Restart rippled

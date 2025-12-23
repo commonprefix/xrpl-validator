@@ -1,0 +1,14 @@
+- name: Install CloudWatch agent
+  ansible.builtin.yum:
+    name: amazon-cloudwatch-agent
+    state: present
+
+- name: Fetch CloudWatch agent config from SSM and restart
+  ansible.builtin.command:
+    cmd: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:AmazonCloudWatch-{{ env_name }}
+  changed_when: true
+
+- name: CloudWatch agent is enabled
+  ansible.builtin.systemd:
+    name: amazon-cloudwatch-agent
+    enabled: true

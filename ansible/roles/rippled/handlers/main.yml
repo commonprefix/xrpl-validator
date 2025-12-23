@@ -1,0 +1,4 @@
+- name: Restart rippled
+  ansible.builtin.systemd:
+    name: rippled
+    state: restarted

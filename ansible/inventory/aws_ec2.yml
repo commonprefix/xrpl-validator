@@ -1,0 +1,35 @@
+plugin: aws_ec2
+assume_role_arn: arn:aws:iam::065810619864:role/testnet-ansible
+regions:
+  - ap-south-1
+
+filters:
+  tag:Environment:
+    - testnet
+    - mainnet
+  instance-state-name: running
+
+keyed_groups:
+  - key: tags.Environment
+    prefix: env
+  - key: tags.Name
+    prefix: name
+  - key: "'validator' if tags.Validator == 'true' else 'node'"
+    prefix: role
+
+hostnames:
+  - instance-id
+
+compose:
+  ansible_host: instance_id
+  ansible_connection: "'community.aws.aws_ssm'"
+  ansible_aws_ssm_region: placement.region
+  ansible_aws_ssm_bucket_name: "'065810619864-testnet-ansible-ssm'"
+  private_ip: private_ip_address
+  rippled_secret_name: tags.SecretName
+  rippled_var_secret_name: tags.VarSecretName
+  rippled_ledger_history: tags.LedgerHistory | default('256')
+  rippled_node_size: tags.NodeSize | default('medium')
+  rippled_log_max_size_mb: tags.LogMaxSizeMB | default('1024')
+  rippled_log_max_files: tags.LogMaxFiles | default('10')
+  rippled_wallet_db_s3_bucket: tags.WalletDbS3Bucket

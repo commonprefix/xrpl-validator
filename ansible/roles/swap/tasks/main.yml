@@ -1,0 +1,40 @@
+- name: Check if NVMe is mounted at /var/lib/rippled
+  ansible.builtin.shell: mountpoint -q /var/lib/rippled
+  register: nvme_mounted
+  failed_when: false
+  changed_when: false
+
+- name: Set swap file path
+  ansible.builtin.set_fact:
+    swap_path: "{{ '/var/lib/rippled/swapfile' if nvme_mounted.rc == 0 else '/swapfile' }}"
+
+- name: Check if swap file exists
+  ansible.builtin.stat:
+    path: "{{ swap_path }}"
+  register: swap_file
+
+- name: Create swap file
+  ansible.builtin.command: dd if=/dev/zero of={{ swap_path }} bs=1M count=2048
+  when: not swap_file.stat.exists
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: "{{ swap_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not swap_file.stat.exists
+
+- name: Make swap file
+  ansible.builtin.command: mkswap {{ swap_path }}
+  when: not swap_file.stat.exists
+
+- name: Enable swap file
+  ansible.builtin.command: swapon {{ swap_path }}
+  when: not swap_file.stat.exists
+
+- name: Add swap to fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    line: "{{ swap_path }} none swap sw 0 0"
+    state: present

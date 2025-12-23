@@ -1,0 +1,46 @@
+# Install and configure rippled from Ripple's official RPM repository
+
+- name: Install rippled
+  ansible.builtin.include_tasks: install.yml
+
+- name: Manage secrets
+  ansible.builtin.include_tasks: secrets.yml
+
+- name: Manage SSL certificates
+  ansible.builtin.include_tasks: ssl.yml
+
+- name: Deploy configuration
+  ansible.builtin.include_tasks: config.yml
+
+- name: Setup wallet.db S3 sync
+  ansible.builtin.include_tasks: wallet_db.yml
+
+- name: Start rippled service
+  ansible.builtin.include_tasks: service.yml
+
+- name: Setup CloudWatch metrics
+  ansible.builtin.include_tasks: metrics.yml
+
+# =============================================================================
+# Backup wallet.db to S3 after rippled creates it (must run after rippled is setup)
+# =============================================================================
+
+- name: Wait for wallet.db to be created by rippled
+  ansible.builtin.wait_for:
+    path: /var/lib/rippled/db/wallet.db
+    timeout: 60
+  ignore_errors: true
+
+- name: Backup wallet.db to S3
+  ansible.builtin.command: /usr/local/bin/wallet-db-sync.sh backup
+  args:
+    creates: /var/lib/rippled/db/.wallet_db_backed_up
+  register: wallet_backup_result
+  ignore_errors: true
+
+- name: Mark wallet.db as backed up
+  ansible.builtin.file:
+    path: /var/lib/rippled/db/.wallet_db_backed_up
+    state: touch
+    mode: "0644"
+  when: wallet_backup_result is succeeded

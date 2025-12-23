@@ -1,0 +1,48 @@
+# CloudWatch metrics for rippled
+
+- name: Create rippled metrics script
+  ansible.builtin.template:
+    src: rippled-metrics.sh.j2
+    dest: /usr/local/bin/rippled-metrics.sh
+    mode: "0755"
+
+- name: Create systemd service for rippled metrics
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/rippled-metrics.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Publish rippled metrics to CloudWatch
+      After=rippled.service
+
+      [Service]
+      Type=oneshot
+      User=rippled
+      ExecStart=/usr/local/bin/rippled-metrics.sh
+      TimeoutStartSec=30
+
+- name: Create systemd timer for rippled metrics
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/rippled-metrics.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run rippled metrics every minute
+
+      [Timer]
+      OnCalendar=*:*:00
+      AccuracySec=1s
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Reload systemd daemon for rippled metrics
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start rippled metrics timer
+  ansible.builtin.systemd:
+    name: rippled-metrics.timer
+    state: started
+    enabled: true

@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -euo pipefail
+
+WALLET_DB_PATH="/var/lib/rippled/db/wallet.db"
+CHECKSUM_FILE="/var/lib/rippled/db/.wallet_db_checksum"
+S3_BUCKET="{{ rippled_wallet_db_s3_bucket }}"
+S3_KEY="{{ tags.Name }}/wallet.db"
+S3_URI="s3://${S3_BUCKET}/${S3_KEY}"
+REGION="{{ ansible_aws_ssm_region }}"
+
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') wallet-db-sync: $1"
+}
+
+restore() {
+    log "Checking for wallet.db in S3..."
+
+    # Check if S3 object exists
+    if aws s3api head-object --bucket "${S3_BUCKET}" --key "${S3_KEY}" --region "${REGION}" 2>/dev/null; then
+        log "Found wallet.db in S3, downloading..."
+        aws s3 cp "${S3_URI}" "${WALLET_DB_PATH}" --region "${REGION}"
+        chown rippled:rippled "${WALLET_DB_PATH}"
+        chmod 600 "${WALLET_DB_PATH}"
+        log "Restored wallet.db from S3"
+    else
+        log "No wallet.db found in S3, will be created by rippled"
+    fi
+}
+
+backup() {
+    if [[ ! -f "${WALLET_DB_PATH}" ]]; then
+        log "No wallet.db found locally, nothing to backup"
+        return 0
+    fi
+
+    CURRENT_CHECKSUM=$(md5sum "${WALLET_DB_PATH}" | awk '{print $1}')
+
+    # Check if file changed since last backup
+    if [[ -f "${CHECKSUM_FILE}" ]]; then
+        LAST_CHECKSUM=$(cat "${CHECKSUM_FILE}")
+        if [[ "${CURRENT_CHECKSUM}" == "${LAST_CHECKSUM}" ]]; then
+            log "wallet.db unchanged since last backup, skipping"
+            return 0
+        fi
+    fi
+
+    log "Uploading wallet.db to S3..."
+    aws s3 cp "${WALLET_DB_PATH}" "${S3_URI}" --region "${REGION}"
+    echo "${CURRENT_CHECKSUM}" > "${CHECKSUM_FILE}"
+    log "Backed up wallet.db to S3"
+}
+
+case "${1:-}" in
+    restore)
+        restore
+        ;;
+    backup)
+        backup
+        ;;
+    *)
+        echo "Usage: $0 {restore|backup}"
+        exit 1
+        ;;
+esac

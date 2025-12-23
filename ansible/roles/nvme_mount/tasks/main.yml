@@ -1,0 +1,118 @@
+# NVMe instance storage is EPHEMERAL - data is lost on stop/start (but preserved on reboot).
+# We use the storage both for swap and /var/lib/rippled. This means swapfile ends up in
+# /var/lib/rippled/swapfile, to simplify things.
+
+- name: Check if NVMe device exists
+  ansible.builtin.stat:
+    path: /dev/nvme1n1
+  register: nvme_device
+
+- name: Create nvme-format script
+  ansible.builtin.copy:
+    dest: /usr/local/bin/nvme-format-if-needed.sh
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      # Format NVMe drive if it doesn't have a valid filesystem
+      # This handles the case where instance storage is wiped after stop/start
+
+      DEVICE="/dev/nvme1n1"
+
+      if [[ ! -b "$DEVICE" ]]; then
+          echo "NVMe device $DEVICE not found, skipping"
+          exit 0
+      fi
+
+      # Check if device has a valid XFS filesystem
+      if xfs_info "$DEVICE" &>/dev/null; then
+          echo "NVMe device $DEVICE already has XFS filesystem"
+          exit 0
+      fi
+
+      # Check with blkid as backup
+      if blkid -t TYPE=xfs "$DEVICE" &>/dev/null; then
+          echo "NVMe device $DEVICE already has XFS filesystem (blkid)"
+          exit 0
+      fi
+
+      echo "NVMe device $DEVICE needs formatting, creating XFS filesystem..."
+      mkfs.xfs -f "$DEVICE"
+      echo "NVMe device $DEVICE formatted successfully"
+  when: nvme_device.stat.exists
+
+- name: Create systemd service to format NVMe before mount
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nvme-format.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Format NVMe instance storage if needed
+      DefaultDependencies=no
+      Before=var-lib-rippled.mount
+      After=dev-nvme1n1.device
+      ConditionPathExists=/dev/nvme1n1
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/nvme-format-if-needed.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=var-lib-rippled.mount
+  when: nvme_device.stat.exists
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: nvme_device.stat.exists
+
+- name: Enable nvme-format service
+  ansible.builtin.systemd:
+    name: nvme-format.service
+    enabled: true
+  when: nvme_device.stat.exists
+
+- name: Check if NVMe is already mounted at /var/lib/rippled
+  ansible.builtin.shell: mountpoint -q /var/lib/rippled
+  register: already_mounted
+  failed_when: false
+  changed_when: false
+  when: nvme_device.stat.exists
+
+- name: Check if /var/lib/rippled has existing data (only if not already mounted)
+  ansible.builtin.stat:
+    path: /var/lib/rippled/db
+  register: existing_rippled_data
+  when: nvme_device.stat.exists and already_mounted.rc != 0
+
+- name: Fail if trying to mount over existing data
+  ansible.builtin.fail:
+    msg: "/var/lib/rippled/db already exists. Stop rippled and move data first."
+  when: nvme_device.stat.exists and already_mounted.rc != 0 and existing_rippled_data.stat.exists | default(false)
+
+- name: Create filesystem on NVMe SSD (initial setup)
+  ansible.builtin.filesystem:
+    fstype: xfs
+    dev: /dev/nvme1n1
+  when: nvme_device.stat.exists and already_mounted.rc != 0
+
+- name: Ensure /var/lib/rippled exists
+  ansible.builtin.file:
+    path: /var/lib/rippled
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: nvme_device.stat.exists and already_mounted.rc != 0
+
+- name: Mount NVMe SSD to /var/lib/rippled
+  ansible.posix.mount:
+    path: /var/lib/rippled
+    src: /dev/nvme1n1
+    fstype: xfs
+    opts: defaults,noatime,nofail
+    state: mounted
+  when: nvme_device.stat.exists and already_mounted.rc != 0
+
+# Note: ownership will be set by rippled role after package is installed
+# since rippled user doesn't exist yet at this point

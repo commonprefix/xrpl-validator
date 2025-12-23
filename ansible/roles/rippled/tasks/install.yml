@@ -1,0 +1,69 @@
+# Install rippled from Ripple's official RPM repository
+
+- name: Add Ripple repository
+  ansible.builtin.yum_repository:
+    name: ripple-stable
+    description: XRP Ledger Packages
+    baseurl: https://repos.ripple.com/repos/rippled-rpm/stable
+    gpgkey: https://repos.ripple.com/repos/rippled-rpm/stable/repodata/repomd.xml.key
+    gpgcheck: false
+    repo_gpgcheck: true
+    enabled: true
+
+- name: Install rippled
+  ansible.builtin.dnf:
+    name: rippled
+    state: present
+    enablerepo: ripple-stable
+
+- name: Ensure /var/lib/rippled is owned by rippled
+  ansible.builtin.file:
+    path: /var/lib/rippled
+    state: directory
+    owner: rippled
+    group: rippled
+    mode: "0755"
+
+- name: Ensure /var/lib/rippled/db is owned by rippled
+  ansible.builtin.file:
+    path: /var/lib/rippled/db
+    state: directory
+    owner: rippled
+    group: rippled
+    mode: "0755"
+
+- name: Swap owned by root rippled
+  ansible.builtin.file:
+    path: /var/lib/rippled/swapfile
+    owner: root
+    group: root
+
+- name: Backup original rippled.cfg
+  ansible.builtin.copy:
+    src: /etc/opt/ripple/rippled.cfg
+    dest: /etc/opt/ripple/rippled.cfg.original
+    remote_src: true
+    force: false
+
+- name: Ensure rippled log directory exists
+  ansible.builtin.file:
+    path: /var/log/rippled
+    state: directory
+    owner: rippled
+    group: rippled
+    mode: "0755"
+
+- name: Configure logrotate for rippled
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/rippled
+    mode: "0644"
+    content: |
+      /var/log/rippled/debug.log {
+          size {{ rippled_log_max_size_mb }}M
+          rotate {{ rippled_log_max_files }}
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+      }

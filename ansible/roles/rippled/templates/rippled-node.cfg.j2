@@ -1,0 +1,127 @@
+[server]
+port_rpc_admin_local
+port_ws_admin_local
+port_peer
+
+[port_rpc_admin_local]
+port = 5005
+ip = 127.0.0.1
+admin = 127.0.0.1
+protocol = http
+
+[port_ws_admin_local]
+port = 6006
+ip = 127.0.0.1
+admin = 127.0.0.1
+protocol = ws
+
+[port_peer]
+port = 51235
+ip = 0.0.0.0
+protocol = peer
+ssl_key = /etc/ssl/rippled/rippled.key
+ssl_cert = /etc/ssl/rippled/rippled.crt
+
+[node_size]
+{{ rippled_node_size }}
+
+[node_db]
+type=NuDB
+path=/var/lib/rippled/db/nudb
+advisory_delete=0
+{% if rippled_ledger_history is defined and rippled_ledger_history != 'full' %}
+online_delete={{ rippled_ledger_history }}
+{% endif %}
+
+[database_path]
+/var/lib/rippled/db
+
+[debug_logfile]
+/var/log/rippled/debug.log
+
+[sntp_servers]
+time.windows.com
+time.apple.com
+time.nist.gov
+pool.ntp.org
+
+[network_id]
+{% if env_name == 'mainnet' %}main{% else %}testnet{% endif %}
+
+# Network selection
+{% if env_name == 'mainnet' %}
+[ips]
+r.ripple.com 51235
+{% else %}
+# Testnet
+[ips]
+s.altnet.rippletest.net 51235
+{% endif %}
+
+# Fixed connections: validator + other proxies in same environment (dynamically from inventory)
+[ips_fixed]
+{% for host in groups['role_validator'] | default([]) | sort %}
+{% if hostvars[host].tags.Environment == env_name %}
+{{ hostvars[host].private_ip }} 51235
+{% endif %}
+{% endfor %}
+{% for host in groups['role_node'] | default([]) | sort %}
+{% if hostvars[host].tags.Environment == env_name and host != inventory_hostname %}
+{{ hostvars[host].private_ip }} 51235
+{% endif %}
+{% endfor %}
+
+# Cluster configuration
+[cluster_nodes]
+{% for key in cluster_node_keys | default([]) | sort %}
+{{ key }}
+{% endfor %}
+
+# Node identity for clustering
+{% if node_seed is defined %}
+[node_seed]
+{{ node_seed }}
+{% endif %}
+
+[validators_file]
+validators.txt
+
+[rpc_startup]
+{ "command": "log_level", "severity": "warning" }
+
+[ssl_verify]
+1
+
+#[relay_validations]
+#trusted
+
+#[relay_proposals]
+#trusted
+
+[fetch_depth] 
+1000
+
+[path_search]
+4
+
+[path_search_fast]
+2
+
+[peers_max]
+21
+
+[path_search_max]
+10
+
+[path_search_old]
+5
+
+
+[max_transactions]
+250
+
+[transaction_queue]
+minimum_txn_in_ledger_standalone=1000
+
+[ledger_history]
+{{ rippled_ledger_history | default(256) }}

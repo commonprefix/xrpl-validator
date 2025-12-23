@@ -1,0 +1,99 @@
+# wallet.db S3 Sync - Persist node identity across instance restarts
+
+- name: Deploy wallet-db-sync script
+  ansible.builtin.template:
+    src: wallet-db-sync.sh.j2
+    dest: /usr/local/bin/wallet-db-sync.sh
+    mode: "0755"
+
+- name: Create systemd service for wallet.db restore (runs before rippled)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wallet-db-restore.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Restore wallet.db from S3 before rippled starts
+      After=local-fs.target
+      Before=rippled.service
+      ConditionPathIsMountPoint=/var/lib/rippled
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/wallet-db-sync.sh restore
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=rippled.service
+
+- name: Create systemd service for wallet.db backup
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wallet-db-backup.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Backup wallet.db to S3
+      ConditionPathExists=/var/lib/rippled/db/wallet.db
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/wallet-db-sync.sh backup
+
+- name: Create systemd timer for periodic wallet.db backup
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wallet-db-backup.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Hourly backup of wallet.db to S3
+
+      [Timer]
+      OnCalendar=hourly
+      Persistent=true
+      RandomizedDelaySec=300
+
+      [Install]
+      WantedBy=timers.target
+
+- name: Create systemd service for wallet.db backup on rippled stop
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/wallet-db-backup-on-stop.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Backup wallet.db to S3 when rippled stops
+      After=rippled.service
+      BindsTo=rippled.service
+      ConditionPathExists=/var/lib/rippled/db/wallet.db
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStop=/usr/local/bin/wallet-db-sync.sh backup
+
+      [Install]
+      WantedBy=rippled.service
+
+- name: Reload systemd daemon for wallet-db services
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable wallet-db-restore service
+  ansible.builtin.systemd:
+    name: wallet-db-restore.service
+    enabled: true
+
+- name: Enable and start wallet-db-backup timer
+  ansible.builtin.systemd:
+    name: wallet-db-backup.timer
+    state: started
+    enabled: true
+
+- name: Enable wallet-db-backup-on-stop service
+  ansible.builtin.systemd:
+    name: wallet-db-backup-on-stop.service
+    enabled: true
+
+- name: Run wallet-db restore now (if wallet.db doesn't exist locally)
+  ansible.builtin.command: /usr/local/bin/wallet-db-sync.sh restore
+  args:
+    creates: /var/lib/rippled/db/wallet.db

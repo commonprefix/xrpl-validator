@@ -1,0 +1,20 @@
+- name: Enable and start rippled
+  ansible.builtin.systemd:
+    name: rippled
+    state: started
+    enabled: true
+
+- name: Copy update-rippled.sh to /usr/local/bin/update-rippled-aws
+  ansible.builtin.copy:
+    src: /opt/ripple/bin/update-rippled.sh
+    dest: /usr/local/bin/update-rippled-aws
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Patch update-rippled-aws to support Amazon Linux
+  ansible.builtin.replace:
+    path: /usr/local/bin/update-rippled-aws
+    regexp: '^\s*elif \[\[ "\$ID" == "fedora"'
+    replace: 'elif [[ "$ID" == "fedora" || "$ID_LIKE" == "fedora"'

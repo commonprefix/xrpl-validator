@@ -1,0 +1,14 @@
+# chronyd is the default NTP client on Amazon Linux 2023 and should already
+# be installed and configured. While this is redundant, this task ensures that
+# chrony is installed and the service is running in case AL2023 ever changes
+
+- name: Ensure chrony is installed
+  ansible.builtin.dnf:
+    name: chrony
+    state: present
+
+- name: Ensure chronyd is enabled and running
+  ansible.builtin.systemd:
+    name: chronyd
+    state: started
+    enabled: true

@@ -1,0 +1,97 @@
+#!/bin/bash
+# Publish rippled metrics to CloudWatch
+
+INSTANCE_ID=$(/usr/bin/ec2-metadata -i | cut -d' ' -f2)
+REGION=$(/usr/bin/ec2-metadata -z | cut -d' ' -f2 | sed 's/.$//')
+PUBLIC_IP=$(/usr/bin/ec2-metadata -v 2>/dev/null | cut -d' ' -f2)
+# ec2-metadata returns "not available" if no public IP
+if [ "$PUBLIC_IP" = "available" ] || [ -z "$PUBLIC_IP" ]; then
+  PUBLIC_IP="none"
+fi
+
+PEERS_JSON=$(timeout 5 /opt/ripple/bin/rippled peers 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$PEERS_JSON" ]; then
+  echo "Failed to get peers data from rippled"
+  exit 1
+fi
+
+SERVER_INFO=$(timeout 5 /opt/ripple/bin/rippled server_info 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$SERVER_INFO" ]; then
+  echo "Failed to get server_info from rippled"
+  exit 1
+fi
+
+PEER_COUNT=$(echo "$PEERS_JSON" | /usr/bin/jq '.result.peers | length // 0')
+CLUSTER_COUNT=$(echo "$PEERS_JSON" | /usr/bin/jq '.result.cluster | keys | length // 0' 2>/dev/null || echo 0)
+
+INFO=$(echo "$SERVER_INFO" | /usr/bin/jq '.result.info')
+
+UPTIME=$(echo "$INFO" | /usr/bin/jq '.uptime // 0')
+PEERS=$(echo "$INFO" | /usr/bin/jq '.peers // 0')
+LOAD_FACTOR=$(echo "$INFO" | /usr/bin/jq '.load_factor // 1')
+PEER_DISCONNECTS=$(echo "$INFO" | /usr/bin/jq '.peer_disconnects | tonumber // 0')
+VALIDATION_QUORUM=$(echo "$INFO" | /usr/bin/jq '.validation_quorum // 0')
+IO_LATENCY_MS=$(echo "$INFO" | /usr/bin/jq '.io_latency_ms // 0')
+
+LAST_CLOSE_CONVERGE=$(echo "$INFO" | /usr/bin/jq '.last_close.converge_time_s // 0')
+LAST_CLOSE_PROPOSERS=$(echo "$INFO" | /usr/bin/jq '.last_close.proposers // 0')
+
+LEDGER_AGE=$(echo "$INFO" | /usr/bin/jq '.validated_ledger.age // 0')
+LEDGER_SEQ=$(echo "$INFO" | /usr/bin/jq '.validated_ledger.seq // 0')
+
+SERVER_STATE_STR=$(echo "$INFO" | /usr/bin/jq -r '.server_state // "unknown"')
+case "$SERVER_STATE_STR" in
+  disconnected) SERVER_STATE=0 ;;
+  connected)    SERVER_STATE=1 ;;
+  syncing)      SERVER_STATE=2 ;;
+  tracking)     SERVER_STATE=3 ;;
+  full)         SERVER_STATE=4 ;;
+  proposing)    SERVER_STATE=5 ;;
+  validating)   SERVER_STATE=6 ;;
+  *)            SERVER_STATE=-1 ;;
+esac
+
+BUILD_VERSION=$(echo "$INFO" | /usr/bin/jq -r '.build_version // "unknown"')
+PUBKEY_NODE=$(echo "$INFO" | /usr/bin/jq -r '.pubkey_node // "unknown"')
+PUBKEY_VALIDATOR=$(echo "$INFO" | /usr/bin/jq -r '.pubkey_validator // "none"')
+COMPLETE_LEDGERS=$(echo "$INFO" | /usr/bin/jq -r '.complete_ledgers // "unknown"')
+LEDGER_HASH=$(echo "$INFO" | /usr/bin/jq -r '.validated_ledger.hash // "unknown"')
+
+/usr/bin/aws logs put-log-events \
+  --region "$REGION" \
+  --log-group-name "/rippled/server-info" \
+  --log-stream-name "$INSTANCE_ID" \
+  --log-events "[{
+    \"timestamp\": $(date +%s000),
+    \"message\": \"{\\\"instance_id\\\": \\\"$INSTANCE_ID\\\", \\\"public_ip\\\": \\\"$PUBLIC_IP\\\", \\\"build_version\\\": \\\"$BUILD_VERSION\\\", \\\"server_state\\\": \\\"$SERVER_STATE_STR\\\", \\\"pubkey_node\\\": \\\"$PUBKEY_NODE\\\", \\\"pubkey_validator\\\": \\\"$PUBKEY_VALIDATOR\\\", \\\"complete_ledgers\\\": \\\"$COMPLETE_LEDGERS\\\", \\\"ledger_hash\\\": \\\"$LEDGER_HASH\\\"}\"
+  }]" 2>/dev/null || true
+
+/usr/bin/aws cloudwatch put-metric-data \
+  --region "$REGION" \
+  --namespace "rippled" \
+  --metric-data "[
+    {\"MetricName\": \"rippled_peer_count\", \"Value\": $PEER_COUNT, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_cluster_count\", \"Value\": $CLUSTER_COUNT, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_uptime\", \"Value\": $UPTIME, \"Unit\": \"Seconds\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_peers\", \"Value\": $PEERS, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_load_factor\", \"Value\": $LOAD_FACTOR, \"Unit\": \"None\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_peer_disconnects\", \"Value\": $PEER_DISCONNECTS, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_validation_quorum\", \"Value\": $VALIDATION_QUORUM, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_io_latency_ms\", \"Value\": $IO_LATENCY_MS, \"Unit\": \"Milliseconds\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_last_close_converge_time\", \"Value\": $LAST_CLOSE_CONVERGE, \"Unit\": \"Seconds\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_last_close_proposers\", \"Value\": $LAST_CLOSE_PROPOSERS, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_ledger_age\", \"Value\": $LEDGER_AGE, \"Unit\": \"Seconds\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_ledger_seq\", \"Value\": $LEDGER_SEQ, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"rippled_server_state\", \"Value\": $SERVER_STATE, \"Unit\": \"None\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]}
+  ]"
+
+# Check if reboot is required due to automated software updates
+/usr/bin/needs-restarting -r >/dev/null 2>&1
+NEEDS_REBOOT=$?
+
+/usr/bin/aws cloudwatch put-metric-data \
+  --region "$REGION" \
+  --namespace "System" \
+  --metric-data "[
+    {\"MetricName\": \"needs_reboot\", \"Value\": $NEEDS_REBOOT, \"Unit\": \"None\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]}
+  ]"

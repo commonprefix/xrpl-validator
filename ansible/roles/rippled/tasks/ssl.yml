@@ -1,0 +1,79 @@
+# SSL Certificate Management (nodes only - validator doesn't expose peer port)
+
+- name: Ensure SSL directory exists
+  ansible.builtin.file:
+    path: /etc/ssl/rippled
+    state: directory
+    owner: rippled
+    group: rippled
+    mode: "0500"
+  when: "'validator' not in tags.Name"
+
+- name: Check if SSL key/cert exist in secret
+  ansible.builtin.set_fact:
+    ssl_in_secret: "{{ (my_node_secret.ssl_key is defined and my_node_secret.ssl_cert is defined) | bool }}"
+  when: "'validator' not in tags.Name"
+  no_log: true
+
+- name: Check if SSL files exist on disk
+  ansible.builtin.stat:
+    path: /etc/ssl/rippled/rippled.key
+  register: ssl_key_stat
+  when: "'validator' not in tags.Name"
+
+- name: Generate self-signed SSL certificate
+  ansible.builtin.shell: |
+    openssl req -x509 -sha256 -nodes -days 3650 -newkey rsa:4096 \
+      -keyout /etc/ssl/rippled/rippled.key \
+      -out /etc/ssl/rippled/rippled.crt \
+      -subj "/CN={{ tags.SslSubjectCN | default(tags.Name) }}/O={{ tags.SslSubjectO | default('XRPL Node') }}/C={{ tags.SslSubjectC | default('US') }}"
+    chown rippled:rippled /etc/ssl/rippled/rippled.key /etc/ssl/rippled/rippled.crt
+    chmod 400 /etc/ssl/rippled/rippled.key
+    chmod 444 /etc/ssl/rippled/rippled.crt
+  when: "'validator' not in tags.Name and not ssl_in_secret and not ssl_key_stat.stat.exists"
+  changed_when: true
+
+- name: Read generated SSL key
+  ansible.builtin.slurp:
+    src: /etc/ssl/rippled/rippled.key
+  register: generated_ssl_key
+  when: "'validator' not in tags.Name and not ssl_in_secret and not ssl_key_stat.stat.exists"
+  no_log: true
+
+- name: Read generated SSL cert
+  ansible.builtin.slurp:
+    src: /etc/ssl/rippled/rippled.crt
+  register: generated_ssl_cert
+  when: "'validator' not in tags.Name and not ssl_in_secret and not ssl_key_stat.stat.exists"
+
+- name: Update secret with generated SSL cert/key
+  ansible.builtin.command:
+    cmd: >
+      aws secretsmanager put-secret-value
+      --region {{ ansible_aws_ssm_region }}
+      --secret-id "{{ rippled_secret_name }}"
+      --secret-string '{{ my_node_secret | combine({"ssl_key": (generated_ssl_key.content | b64decode), "ssl_cert": (generated_ssl_cert.content | b64decode)}) | to_json }}'
+  when: "'validator' not in tags.Name and not ssl_in_secret and not ssl_key_stat.stat.exists"
+  changed_when: true
+  no_log: true
+
+- name: Deploy SSL key from secret
+  ansible.builtin.copy:
+    content: "{{ my_node_secret.ssl_key }}"
+    dest: /etc/ssl/rippled/rippled.key
+    owner: rippled
+    group: rippled
+    mode: "0400"
+  when: "'validator' not in tags.Name and ssl_in_secret"
+  no_log: true
+  notify: Restart rippled
+
+- name: Deploy SSL cert from secret
+  ansible.builtin.copy:
+    content: "{{ my_node_secret.ssl_cert }}"
+    dest: /etc/ssl/rippled/rippled.crt
+    owner: rippled
+    group: rippled
+    mode: "0444"
+  when: "'validator' not in tags.Name and ssl_in_secret"
+  notify: Restart rippled

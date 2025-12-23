@@ -1,0 +1,18 @@
+- name: Configure base system
+  hosts: all
+  become: true
+  vars:
+    env_name: "{{ tags.Environment | default('unknown') }}"
+  pre_tasks:
+    - name: Install base packages
+      ansible.builtin.dnf:
+        name:
+          - vim-enhanced
+          - dnf-utils
+        state: present
+  roles:
+    - nvme_mount
+    - swap
+    - chrony
+    - cloudwatch_agent
+    - rippled

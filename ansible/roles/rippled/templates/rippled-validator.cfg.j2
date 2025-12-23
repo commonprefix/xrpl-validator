@@ -1,0 +1,116 @@
+[server]
+port_rpc_admin_local
+port_ws_admin_local
+
+[port_rpc_admin_local]
+port = 5005
+ip = 127.0.0.1
+admin = 127.0.0.1
+protocol = http
+
+[port_ws_admin_local]
+port = 6006
+ip = 127.0.0.1
+admin = 127.0.0.1
+protocol = ws
+
+[node_size]
+{{ rippled_node_size | default('medium') }}
+
+[node_db]
+type=NuDB
+path=/var/lib/rippled/db/nudb
+advisory_delete=0
+{% if rippled_ledger_history is defined and rippled_ledger_history != 'full' %}
+online_delete={{ rippled_ledger_history }}
+{% endif %}
+
+[database_path]
+/var/lib/rippled/db
+
+[debug_logfile]
+/var/log/rippled/debug.log
+
+[sntp_servers]
+time.windows.com
+time.apple.com
+time.nist.gov
+pool.ntp.org
+
+[network_id]
+{% if env_name == 'mainnet' %}main{% else %}testnet{% endif %}
+
+[ips]
+{% for host in groups['role_node'] | default([]) | sort %}
+{% if hostvars[host].tags.Environment == env_name %}
+{{ hostvars[host].private_ip }} 51235
+{% endif %}
+{% endfor %}
+
+[ips_fixed]
+{% for host in groups['role_node'] | default([]) | sort %}
+{% if hostvars[host].tags.Environment == env_name %}
+{{ hostvars[host].private_ip }} 51235
+{% endif %}
+{% endfor %}
+
+# Hide validator IP from network
+[peer_private]
+1
+
+# Cluster configuration - node public keys
+[cluster_nodes]
+{% for key in cluster_node_keys | default([]) | sort %}
+{{ key }}
+{% endfor %}
+
+# Node identity for clustering
+{% if node_seed is defined %}
+[node_seed]
+{{ node_seed }}
+{% endif %}
+
+# Validator token (generated offline with validator-keys tool)
+{% if validator_token is defined %}
+[validator_token]
+{{ validator_token }}
+{% endif %}
+
+[validators_file]
+validators.txt
+
+[rpc_startup]
+{ "command": "log_level", "severity": "warning" }
+
+[ssl_verify]
+1
+
+[relay_validations]
+trusted
+
+[relay_proposals]
+trusted
+
+[fetch_depth] 
+500
+
+[path_search]
+2
+
+[path_search_fast]
+1
+
+[path_search_max]
+0
+
+[path_search_old]
+2
+
+[max_transactions]
+250
+
+[transaction_queue]
+minimum_txn_in_ledger_standalone=1000
+
+[ledger_history]
+{{ rippled_ledger_history | default(256) }}
