@@ -1,0 +1,71 @@
+# Domain Verification - Generate attestation and upload xrp-ledger.toml to S3
+# Only runs on validators with domain configured
+
+- name: Check if attestation already exists in secret
+  ansible.builtin.set_fact:
+    has_attestation: "{{ my_node_secret.attestation is defined and my_node_secret.attestation != '' }}"
+  no_log: true
+
+- name: Generate domain attestation
+  ansible.builtin.shell: |
+    /opt/ripple/bin/validator-keys set_domain {{ xrpl_domain }}
+  args:
+    chdir: /var/lib/rippled
+  register: set_domain_output
+  when: not has_attestation
+  changed_when: true
+
+- name: Parse attestation from output
+  ansible.builtin.set_fact:
+    generated_attestation: "{{ set_domain_output.stdout | regex_search('attestation=\"([^\"]+)\"', '\\1') | first }}"
+  when: not has_attestation
+
+- name: Update secret with attestation
+  ansible.builtin.shell: |
+    # Get current secret value
+    CURRENT=$(aws secretsmanager get-secret-value \
+      --region {{ ansible_aws_ssm_region }} \
+      --secret-id "{{ rippled_secret_name }}" \
+      --query SecretString --output text)
+
+    # Add attestation to the JSON
+    UPDATED=$(echo "$CURRENT" | jq --arg att "{{ generated_attestation }}" '. + {attestation: $att}')
+
+    # Update the secret
+    aws secretsmanager put-secret-value \
+      --region {{ ansible_aws_ssm_region }} \
+      --secret-id "{{ rippled_secret_name }}" \
+      --secret-string "$UPDATED"
+  when: not has_attestation
+  changed_when: true
+  no_log: true
+
+- name: Set attestation fact
+  ansible.builtin.set_fact:
+    attestation: "{{ generated_attestation if not has_attestation else my_node_secret.attestation }}"
+  no_log: true
+
+- name: Fetch var secret for public key
+  ansible.builtin.set_fact:
+    my_var_secret: "{{ lookup('amazon.aws.secretsmanager_secret', rippled_var_secret_name, region=ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}') | from_json }}"
+  no_log: true
+
+- name: Get validation public key
+  ansible.builtin.set_fact:
+    validation_public_key: "{{ my_var_secret.validation_public_key | default(my_var_secret.node_public_key) }}"
+  no_log: true
+
+- name: Create xrp-ledger.toml content
+  ansible.builtin.set_fact:
+    xrpl_toml_content: |
+      [[VALIDATORS]]
+      public_key = "{{ validation_public_key }}"
+      attestation = "{{ attestation }}"
+      domain = "{{ xrpl_domain }}"
+
+- name: Upload xrp-ledger.toml to S3
+  ansible.builtin.shell: |
+    echo '{{ xrpl_toml_content }}' | aws s3 cp - s3://{{ xrpl_toml_bucket }}/.well-known/xrp-ledger.toml \
+      --content-type "application/toml" \
+      --region {{ ansible_aws_ssm_region }}
+  changed_when: true
