@@ -310,6 +310,11 @@ The module creates:
 
 Subscribe to the SNS topic for alerts (email, PagerDuty, Discord, etc.).
 
+The dashboard is created for every environment. Since it is managed by Terraform, please resist the urge to change it directly in AWS console.
+
+![dashboard](docs/dashboard.png)
+
+
 ### Validator Token
 
 When Ansible first runs on a new validator, it generates a `validation_seed` which gives the node a **peer identity** for cluster communication. However, to actually **participate in consensus** (propose and vote on transactions), you need a `validator_token`.
