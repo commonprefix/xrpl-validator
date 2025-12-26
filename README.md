@@ -200,7 +200,7 @@ For validators (no SSL - validator doesn't expose peer port):
 ```json
 {
   "validation_seed": "ssXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-  "validator_token": "eyJ2YWxpZGF0aW9uX3NlY3JldF9rZXkiOi..."
+  "validator_token": "XXXXXXXXXXXXXXXXXXXXXXXXXXX..."
 }
 ```
 
@@ -326,7 +326,6 @@ Generate a validator token on a secure machine:
 
 # Generate a token from the master key
 /opt/ripple/bin/validator-keys create_token
-# Output: A base64-encoded token starting with "eyJ..."
 ```
 
 Then add the token to your validator's secret:
@@ -336,7 +335,7 @@ aws secretsmanager update-secret --region <region> \
   --secret-id "rippled/myenv/secret/validator" \
   --secret-string '{
     "validation_seed": "ssExistingSeed...",
-    "validator_token": "eyJvalidation_secret_key..."
+    "validator_token": "validation_secret_key..."
   }'
 ```
 
