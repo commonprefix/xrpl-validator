@@ -30,6 +30,9 @@ resource "aws_instance" "node" {
   monitoring                  = true
   associate_public_ip_address = each.value.public
 
+  disable_api_termination = true
+  disable_api_stop        = true
+
   root_block_device {
     volume_size = each.value.root_volume_size
     volume_type = "gp3"
