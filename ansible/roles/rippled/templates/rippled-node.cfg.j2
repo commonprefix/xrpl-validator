@@ -48,7 +48,6 @@ pool.ntp.org
 [network_id]
 {% if env_name == 'mainnet' %}main{% else %}testnet{% endif %}
 
-# Network selection
 {% if env_name == 'mainnet' %}
 [ips]
 r.ripple.com 51235
@@ -58,7 +57,6 @@ r.ripple.com 51235
 s.altnet.rippletest.net 51235
 {% endif %}
 
-# Fixed connections: validator + other proxies in same environment (dynamically from inventory)
 [ips_fixed]
 {% for host in groups['role_validator'] | default([]) | sort %}
 {% if hostvars[host].tags.Environment == env_name %}
@@ -71,13 +69,11 @@ s.altnet.rippletest.net 51235
 {% endif %}
 {% endfor %}
 
-# Cluster configuration
 [cluster_nodes]
 {% for key in cluster_node_keys | default([]) | sort %}
 {{ key }}
 {% endfor %}
 
-# Node identity for clustering
 {% if node_seed is defined %}
 [node_seed]
 {{ node_seed }}

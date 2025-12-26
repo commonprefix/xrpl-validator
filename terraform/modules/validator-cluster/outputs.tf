@@ -4,7 +4,7 @@ output "vpc_id" {
 }
 
 output "nodes" {
-  description = "Map of all node instance information (including validator)"
+  description = "Map of all node instance information"
   value = {
     for name, instance in aws_instance.node : name => {
       instance_id = instance.id
@@ -27,4 +27,14 @@ output "ansible_role_arn" {
 output "ansible_ssm_bucket" {
   description = "Name of the S3 bucket for Ansible SSM sessions"
   value       = length(aws_s3_bucket.ansible_ssm) > 0 ? aws_s3_bucket.ansible_ssm[0].id : null
+}
+
+output "xrpl_toml_bucket" {
+  description = "Name of the S3 bucket for xrp-ledger.toml"
+  value       = aws_s3_bucket.xrpl_toml.id
+}
+
+output "domain_verification_url" {
+  description = "URL to verify domain setup"
+  value       = "https://${var.domain}/.well-known/xrp-ledger.toml"
 }

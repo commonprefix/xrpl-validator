@@ -21,6 +21,10 @@
 - name: Setup CloudWatch metrics
   ansible.builtin.include_tasks: metrics.yml
 
+- name: Setup domain verification
+  ansible.builtin.include_tasks: domain_verification.yml
+  when: xrpl_domain is defined and xrpl_domain != ''
+
 # =============================================================================
 # Backup wallet.db to S3 after rippled creates it (must run after rippled is setup)
 # =============================================================================

@@ -102,3 +102,13 @@ variable "alarm_thresholds" {
     cpu_used_percent       = 75
   }
 }
+
+variable "domain" {
+  description = "Domain name for the validator (e.g., testnet.xrpl.example.com)"
+  type        = string
+}
+
+variable "route53_zone_id" {
+  description = "Route 53 hosted zone ID where DNS records will be created"
+  type        = string
+}

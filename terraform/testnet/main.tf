@@ -28,6 +28,9 @@ module "cluster" {
   availability_zones = local.availability_zones
   vpc_cidr           = "10.0.0.0/16"
 
+  domain          = "testnet.xrpl.commonprefix.com"
+  route53_zone_id = "Z04111362OT1X6VMPBLFP"
+
   rippled_log_max_size_mb = 100
   rippled_log_max_files   = 10
 

@@ -57,7 +57,12 @@ resource "aws_instance" "node" {
       SslSubjectCN = each.value.ssl_subject != null ? each.value.ssl_subject.cn : each.value.name
       SslSubjectO  = each.value.ssl_subject != null ? each.value.ssl_subject.o : "XRPL Node"
       SslSubjectC  = each.value.ssl_subject != null ? each.value.ssl_subject.c : "US"
-    }
+    },
+    # Domain verification tags only for validators
+    each.value.validator ? {
+      XrplTomlBucket = aws_s3_bucket.xrpl_toml.id
+      Domain         = var.domain
+    } : {}
   )
 
   lifecycle {

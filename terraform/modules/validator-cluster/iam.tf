@@ -132,6 +132,29 @@ resource "aws_iam_role_policy" "node_wallet_db" {
   })
 }
 
+resource "aws_iam_role_policy" "validator_xrpl_toml" {
+  for_each = { for name, node in local.nodes_by_name : name => node if node.validator }
+
+  name = "xrpl-toml"
+  role = aws_iam_role.node[each.key].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "XrplTomlS3Write"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.xrpl_toml.arn}/.well-known/xrp-ledger.toml"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "node" {
   for_each = local.nodes_by_name
 
