@@ -256,7 +256,7 @@ Ansible fetches public keys from all other nodes' `var_secret_name` and builds t
 
 # Cheat-Sheet
 
-### Accessing Instances
+## Accessing Instances
 
 No SSH. Use AWS Systems Manager Session Manager:
 
@@ -264,14 +264,14 @@ No SSH. Use AWS Systems Manager Session Manager:
 aws ssm start-session --region <region> --target <instance-id>
 ```
 
-### Adding a Node
+## Adding a Node
 
 1. Add to `nodes` list in Terraform
 2. `terraform apply`
 3. Configure new node: `ansible-playbook playbooks/site.yml -l name_myenv_node_X`
 4. Update cluster config on all nodes: `ansible-playbook playbooks/site.yml -l env_myenv`
 
-### Upgrading rippled
+## Upgrading rippled
 
 ```bash
 # Connect to instance
@@ -286,7 +286,7 @@ rippled server_info | grep build_version
 
 For rolling upgrades: upgrade nodes first (wait for `full` state), then validator last.
 
-### Useful Commands
+## Useful Commands
 
 ```bash
 # Run on all instances in environment
@@ -305,7 +305,7 @@ ansible env_myenv -m shell -a "rippled server_info | jq .result.info.server_stat
 ansible-inventory -i inventory/aws_ec2.yml --graph
 ```
 
-### Monitoring
+## Monitoring
 
 The module creates:
 - **CloudWatch Dashboard**: `rippled-<environment>` with server state, peers, ledger metrics, system metrics
@@ -318,8 +318,7 @@ The dashboard is created for every environment. Since it is managed by Terraform
 
 ![dashboard](docs/dashboard.png)
 
-
-### Validator Token
+## Validator Token
 
 When Ansible first runs on a new validator, it generates a `validation_seed` which gives the node a **peer identity** for cluster communication. However, to actually **participate in consensus** (propose and vote on transactions), you need a `validator_token`.
 
@@ -359,3 +358,8 @@ The validator will now participate in consensus. You can verify with:
 ```bash
 rippled server_info | grep server_state
 ```
+
+# TODO
+
+- [ ] Use https://data.xrpl.org/v1/network/validators/test to check how we are doing
+- [ ] Setup domain name TOML
