@@ -289,3 +289,30 @@ resource "aws_cloudwatch_metric_alarm" "needs_reboot" {
     Environment = var.environment
   }
 }
+
+resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
+  for_each = aws_instance.node
+
+  alarm_name          = "${each.key}-instance-status-check"
+  alarm_description   = "${each.key} failed instance status check - auto rebooting"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "StatusCheckFailed_Instance"
+  namespace           = "AWS/EC2"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+
+  dimensions = {
+    InstanceId = each.value.id
+  }
+
+  alarm_actions = [
+    "arn:aws:automate:${var.region}:ec2:reboot",
+    aws_sns_topic.alerts.arn
+  ]
+
+  tags = {
+    Environment = var.environment
+  }
+}
