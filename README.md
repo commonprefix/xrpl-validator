@@ -174,11 +174,11 @@ Each node in the `nodes` list accepts:
 Alarm thresholds:
 ```hcl
 alarm_thresholds = {
-  ledger_age_seconds  = 20   # Alert if ledger age exceeds this
-  node_min_peer_count = 5    # Alert if node has fewer peers
-  disk_used_percent   = 75   # Alert if disk usage exceeds this
-  memory_used_percent = 75   # Alert if memory usage exceeds this
-  cpu_used_percent    = 75   # Alert if CPU usage exceeds this
+  ledger_age_seconds  = 20
+  node_min_peer_count = 5
+  disk_used_percent   = 75
+  memory_used_percent = 75
+  cpu_used_percent    = 75
 }
 ```
 
