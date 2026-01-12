@@ -2,29 +2,15 @@
 
 Moderately opinionated Terraform and Ansible configuration for running XRPL validator clusters on AWS.
 
-## Background
+## Cluster Setup
 
-### Validators vs Nodes
+This setup runs two types of rippled servers: 
 
-**Nodes** are rippled servers that:
-- Sync with the network and maintain a copy of the ledger
-- Accept and relay transactions
-- Serve API requests
-- Do NOT participate in consensus
+**Nodes** sync with the network, keep a copy of the ledger, and relay transactions. Nodes work in a cluster alongside a validator, acting as a sort of proxy between the network and the validator. They don't participate in consensus though.
 
-**Validators** are rippled servers that:
-- Do everything stock nodes do, PLUS
-- Participate in consensus by proposing and voting on transaction sets
-- Must be highly available and secure (network disruption affects consensus)
+**Validator** runs in a cluster with nodes and participates in consensus. 
 
-### Cluster
-
-Running a validator directly exposed to the internet is risky:
-- DDoS attacks can take it offline, harming network consensus
-- IP address exposure makes it a target
-- Direct peer connections increase attack surface
-
-The solution is a **cluster**: one hidden validator behind multiple proxy nodes.
+The validator hides behind a **cluster** of proxy nodes. The validator sits in an isolated subnet with no direct internet access. The proxy nodes handle all the public-facing traffic and relay messages to the validator.
 
 ```mermaid
 flowchart TD
@@ -61,18 +47,45 @@ For more background, see the [Rabbitkick XRPL Validator Guide](https://rabbitkic
 
 ### Environments
 
-Each environment (e.g., `testnet`, `mainnet`) is a completely isolated cluster with its own:
-- VPC and networking
-- EC2 instances
-- Secrets in AWS Secrets Manager
-- CloudWatch alarms and dashboard
-- S3 buckets for wallet.db backup
+Each environment (e.g., `testnet`, `mainnet`) is a completely isolated cluster with its own VPC, EC2 instances, secrets, and monitoring. Environments are defined in `terraform/<environment>/main.tf`. See `terraform/testnet/` as a reference.
 
-Environments are defined in `terraform/<environment>/main.tf`. See `terraform/testnet/` as a reference.
+#### VPC and Networking
 
-### Terraform Module
+The module creates a VPC with three tiers of subnets:
 
-The core infrastructure is defined in a reusable module at `terraform/modules/validator-cluster/`. Each environment imports this module and configures it.
+- **Public subnets** for nodes that need to accept inbound connections from the internet. These get public IPs and use an internet gateway.
+- **Private subnets** for nodes that only make outbound connections. Traffic goes through a shared NAT gateway.
+- **Validator subnet** is completely isolated private subnet with a dedicated NAT gateway.
+
+#### EC2 Instances
+
+To keep things simple, we decided to deploy rippled to a set of provisioned EC2 instances. The reasons why we don't containerize rippled and run containers in something like ECS or K8S:
+- The number of validators will not scale and we will never want to run two validators with the same configuration. In fact, this setup only assumes one validator will ever run in a cluster.
+- While it could make sense for nodes to scale, we do not anticipate a demand for scaling based on objective metrics. 
+- Each node is likely to be very unique in its setup. For example, if a node is also used by an application to fetch historical data, that setup will be quite different to a node that is used for redundancy in a cluster. 
+- All nodes and validators require SSD storage. We can't trivially location-balance them without making sure we stop them, copy all history and then start on new machine. While this can of course be achieved with a container orchestration tool, we don't anticipate the need right now.
+
+It is quite likely that we will eventually want to have two nodes with long history used for redundancy (so one can be updated while the other one) used by a external application, in which case, for now, we will keep them behind a load balancer. 
+
+Instances are configured in the `nodes` list. Each one gets an IAM role scoped to just its own secrets and S3 paths. The module uses instance types with NVMe storage (like z1d) - the local NVMe drive is mounted at `/var/lib/rippled` for ledger data. This storage is ephemeral (wiped on stop, preserved on reboot), which is fine since rippled can resync from the network.
+
+All instances have termination and stop protection enabled to prevent accidents. They're also set up for Systems Manager access instead of SSH.
+
+EC2 instances are provisioned by Terraform and managed by Ansible.
+
+#### Secrets
+
+Each node has two secrets in AWS Secrets Manager. The "secret" one holds sensitive data like the validation seed and SSL keys - only that specific instance can read it. The "var" one holds public data like the validation public key, which all nodes can read so they can build their cluster configuration.
+
+IAM policies ensure nodes can only access their own secrets and other nodes' public data.
+
+#### CloudWatch
+
+The module sets up alarms for both rippled health and system health. 
+
+There's also an instance status check alarm that automatically reboots the instance if the OS becomes unresponsive. All alarms notify an SNS topic you can subscribe to.
+
+Also, each cluster gets its dashboard.
 
 ### Ansible
 
@@ -80,6 +93,9 @@ Ansible configures the instances after Terraform provisions them. It uses a dyna
 - `env_<environment>` - all instances in an environment (e.g., `env_testnet`)
 - `name_<name>` - individual instances (e.g., `name_testnet_validator`)
 - `role_validator` / `role_node` - by role
+
+
+# Usage
 
 ## Prerequisites
 
@@ -90,7 +106,7 @@ Ansible configures the instances after Terraform provisions them. It uses a dyna
 
 ### IAM Role for Terraform
 
-Terraform needs an IAM role with permissions for EC2, VPC, IAM, CloudWatch, SNS, SSM, and S3. The role should cover:
+User or process running Terraform needs an IAM role with permissions for EC2, VPC, IAM, CloudWatch, SNS, SSM, and S3. The role should cover:
 
 - **EC2**: Full VPC management (subnets, NAT gateways, security groups, instances)
 - **IAM**: Create/manage roles and instance profiles (scoped to `*-validator`, `*-node-*`, `*-ansible` patterns)
@@ -99,17 +115,13 @@ Terraform needs an IAM role with permissions for EC2, VPC, IAM, CloudWatch, SNS,
 - **SSM**: Patch baselines, maintenance windows
 - **S3**: State bucket access, Ansible SSM bucket, wallet.db backup bucket
 
-Whichever principal is running Terraform needs to be able to assume the role. 
-
-## Usage
-
-To deploy or update an environment:
+## Steps
 
 ### 1. Deploy Infrastructure
 
 ```bash
 export AWS_PROFILE=your-profile
-cd terraform/myenv
+cd terraform/<env>
 terraform init
 terraform plan
 terraform apply
@@ -120,10 +132,10 @@ terraform apply
 ```bash
 cd ansible
 export AWS_PROFILE=your-profile
-ansible-playbook playbooks/site.yml -l env_myenv
+ansible-playbook playbooks/site.yml -l env_<env>
 ```
 
-### Node Configuration Reference
+## Node Configuration Reference
 
 Each node in the `nodes` list accepts:
 
@@ -166,14 +178,6 @@ alarm_thresholds = {
   cpu_used_percent    = 75   # Alert if CPU usage exceeds this
 }
 ```
-
-## How Ansible Works
-
-Ansible runs after Terraform provisions the instances. It performs these steps:
-
-### NVMe Storage Setup
-
-Instances use NVMe instance storage for `/var/lib/rippled`. This storage is **ephemeral** - it's wiped when the instance stops (but preserved on reboot). A systemd service automatically reformats it on boot if needed.
 
 ### Secret Management
 
@@ -250,7 +254,7 @@ Each node can only access its own S3 path (IAM-enforced).
 
 Ansible fetches public keys from all other nodes' `var_secret_name` and builds the cluster configuration. All nodes trust each other as peers.
 
-## Operations
+# Cheat-Sheet
 
 ### Accessing Instances
 
