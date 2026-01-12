@@ -85,7 +85,10 @@ The module sets up alarms for both rippled health and system health.
 
 There's also an instance status check alarm that automatically reboots the instance if the OS becomes unresponsive. All alarms notify an SNS topic you can subscribe to.
 
-Also, each cluster gets its dashboard.
+Also, each cluster gets its dashboard: 
+
+![dashboard](docs/dashboard.png)
+
 
 ### Ansible
 
@@ -315,8 +318,6 @@ The module creates:
 Subscribe to the SNS topic for alerts (email, PagerDuty, Discord, etc.).
 
 The dashboard is created for every environment. Since it is managed by Terraform, please resist the urge to change it directly in AWS console.
-
-![dashboard](docs/dashboard.png)
 
 ## Validator Token
 
