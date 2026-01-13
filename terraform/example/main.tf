@@ -25,7 +25,7 @@ module "cluster" {
   # source = "../../xrpl-validator/terraform/modules/validator-cluster"
 
   # If using directly from GitHub:
-  # source = "github.com/commonprefix/xrpl-validator//terraform/modules/validator-cluster"
+  # source = "github.com/commonprefix/xrpl-validator/terraform/modules/validator-cluster"
 
   source = "../modules/validator-cluster"
 
@@ -59,7 +59,9 @@ module "cluster" {
     }
   ]
 
+  # IAM principals allowed to assume the Ansible role.
+  # This is typically the role/user you use to run Ansible from your workstation or CI/CD pipeline.
   ansible_role_principals = [
-    "arn:aws:iam::123456789012:role/YourAdminRole"
+    "arn:aws:iam::123456789012:role/YourAnsibleRole"
   ]
 }
