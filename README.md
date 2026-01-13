@@ -36,8 +36,8 @@ flowchart TD
 ```
 
 - **Validator**: Hidden in an isolated subnet with its own NAT gateway (prevents IP leakage of any sorts). Only accepts connections from trusted proxy nodes. Runs in "proposing" state.
-- **Public nodes**: Have public IPs, accept inbound peer connections from the internet. Act as proxies.
-- **Private nodes**: No public IP, outbound-only connections via NAT. Still proxy for the validator but don't accept random inbound peers.
+- **Public nodes**: Have public IPs, accept inbound peer connections from the internet. Suitable for proxies.
+- **Private nodes**: No public IP, outbound-only connections via NAT. Still proxy for the validator but don't accept random inbound peers. Suitable if you need a node to e.g. use for API access.
 
 All nodes in the cluster share public keys and communicate as trusted peers.
 
@@ -252,7 +252,9 @@ When Ansible runs, it will detect these existing secrets and use them instead of
 - **Hourly**: Backs up wallet.db to S3
 - **On stop**: Backs up wallet.db before shutdown
 
-Each node can only access its own S3 path (IAM-enforced).
+Each node can only access its own S3 path (IAM-enforced). 
+
+If you are migrating, you can put `wallet.db` in predefined s3 location, alongside using predefined secrets.
 
 ### Cluster Configuration
 
@@ -275,17 +277,17 @@ aws ssm start-session --region <region> --target <instance-id>
 3. Configure new node: `ansible-playbook playbooks/site.yml -l name_myenv_node_X`
 4. Update cluster config on all nodes: `ansible-playbook playbooks/site.yml -l env_myenv`
 
-## Upgrading `rippled`
+## Upgrading rippled
 
 ```bash
 # Connect to instance
 aws ssm start-session --region <region> --target <instance-id>
 
 # Run upgrade
-sudo /usr/local/bin/update-`rippled`-aws
+sudo /usr/local/bin/update-rippled-aws
 
 # Verify
-`rippled` server_info | grep build_version
+rippled server_info | grep build_version
 ```
 
 For rolling upgrades: upgrade nodes first (wait for `full` state), then validator last.
@@ -299,11 +301,11 @@ ansible-playbook playbooks/site.yml -l env_myenv
 # Run on specific instance
 ansible-playbook playbooks/site.yml -l name_myenv_node_1
 
-# Restart `rippled` everywhere
-ansible env_myenv -m systemd -a "name=`rippled` state=restarted" --become
+# Restart rippled everywhere
+ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
 
 # Check server state
-ansible env_myenv -m shell -a "`rippled` server_info | jq .result.info.server_state" --become
+ansible env_myenv -m shell -a "rippled server_info | jq .result.info.server_state" --become
 
 # List available hosts
 ansible-inventory -i inventory/aws_ec2.yml --graph
@@ -314,7 +316,7 @@ ansible-inventory -i inventory/aws_ec2.yml --graph
 The module creates:
 - **CloudWatch Dashboard**: `rippled-<env>` with server state, peers, ledger metrics, system metrics
 - **CloudWatch Alarms**: Server state, ledger age, peer count, cluster connectivity, disk/memory/CPU, reboot required
-- **SNS Topics**: `<env>-`rippled`-alerts` for notifications
+- **SNS Topics**: `<env>-rippled-alerts` for notifications
 
 Subscribe to the SNS topic for alerts (email, PagerDuty, Discord, etc.).
 
@@ -342,7 +344,7 @@ Then add the token to your validator's secret:
 
 ```bash
 aws secretsmanager update-secret --region <region> \
-  --secret-id "`rippled`/myenv/secret/validator" \
+  --secret-id "rippled/myenv/secret/validator" \
   --secret-string '{
     "validation_seed": "ssExistingSeed...",
     "validator_token": "validation_secret_key..."
@@ -358,7 +360,7 @@ ansible-playbook playbooks/site.yml -l name_myenv_validator
 The validator will now participate in consensus. You can verify with:
 
 ```bash
-`rippled` server_info | grep server_state
+rippled server_info | grep server_state
 ```
 
 # TODO
