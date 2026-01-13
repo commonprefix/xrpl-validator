@@ -4,7 +4,7 @@ Moderately opinionated Terraform and Ansible configuration for running XRPL vali
 
 ## Cluster Setup
 
-This setup runs two types of rippled servers: 
+This setup runs two types of `rippled` servers: 
 
 **Nodes** sync with the network, keep a copy of the ledger, and relay transactions. Nodes work in a cluster alongside a validator, acting as a sort of proxy between the network and the validator. They don't participate in consensus though.
 
@@ -43,7 +43,9 @@ All nodes in the cluster share public keys and communicate as trusted peers.
 
 For more background, see the [Rabbitkick XRPL Validator Guide](https://rabbitkick.club/rippled_guide/rippled.html).
 
-## Project Structure
+## Structure
+
+Infrastructure is managed by Terraform, while EC2 provisioning is done by Ansible.
 
 ### Environments
 
@@ -51,7 +53,7 @@ Each environment (e.g., `testnet`, `mainnet`) is a completely isolated cluster w
 
 #### VPC and Networking
 
-The module creates a VPC with three tiers of subnets:
+The Terraform module creates a VPC with three tiers of subnets:
 
 - **Public subnets** for nodes that need to accept inbound connections from the internet. These get public IPs and use an internet gateway.
 - **Private subnets** for nodes that only make outbound connections. Traffic goes through a shared NAT gateway.
@@ -59,7 +61,7 @@ The module creates a VPC with three tiers of subnets:
 
 #### EC2 Instances
 
-To keep things simple, we decided to deploy rippled to a set of provisioned EC2 instances. The reasons why we don't containerize rippled and run containers in something like ECS or K8S:
+To keep things simple, we decided to deploy `rippled` to a set of provisioned EC2 instances. The reasons why we don't containerize `rippled` and run containers in something like ECS or K8S:
 - The number of validators will not scale and we will never want to run two validators with the same configuration. In fact, this setup only assumes one validator will ever run in a cluster.
 - While it could make sense for nodes to scale, we do not anticipate a demand for scaling based on objective metrics. 
 - Each node is likely to be very unique in its setup. For example, if a node is also used by an application to fetch historical data, that setup will be quite different to a node that is used for redundancy in a cluster. 
@@ -67,7 +69,7 @@ To keep things simple, we decided to deploy rippled to a set of provisioned EC2 
 
 It is quite likely that we will eventually want to have two nodes with long history used for redundancy (so one can be updated while the other one) used by a external application, in which case, for now, we will keep them behind a load balancer. 
 
-Instances are configured in the `nodes` list. Each one gets an IAM role scoped to just its own secrets and S3 paths. The module uses instance types with NVMe storage (like z1d) - the local NVMe drive is mounted at `/var/lib/rippled` for ledger data. This storage is ephemeral (wiped on stop, preserved on reboot), which is fine since rippled can resync from the network.
+Each one gets an IAM role scoped to just its own secrets and S3 paths. The module uses instance types with NVMe storage (like z1d) - the local NVMe drive is mounted at `/var/lib/rippled` for ledger data. This storage is ephemeral (wiped on stop, preserved on reboot), which is fine since `rippled` can resync from the network. In case we want to store longer history without every losing it, we will need to run occasional backups (which might involve stopping `rippled`, taking the snapshot, and then continuing)
 
 All instances have termination and stop protection enabled to prevent accidents. They're also set up for Systems Manager access instead of SSH.
 
@@ -81,7 +83,7 @@ IAM policies ensure nodes can only access their own secrets and other nodes' pub
 
 #### CloudWatch
 
-The module sets up alarms for both rippled health and system health. 
+The module sets up alarms for both `rippled` health and system health. 
 
 There's also an instance status check alarm that automatically reboots the instance if the OS becomes unresponsive. All alarms notify an SNS topic you can subscribe to.
 
@@ -96,7 +98,6 @@ Ansible configures the instances after Terraform provisions them. It uses a dyna
 - `env_<environment>` - all instances in an environment (e.g., `env_testnet`)
 - `name_<name>` - individual instances (e.g., `name_testnet_validator`)
 - `role_validator` / `role_node` - by role
-
 
 # Usage
 
@@ -154,7 +155,7 @@ Each node in the `nodes` list accepts:
 | `var_secret_name` | Yes | AWS Secrets Manager path for public data (validation_public_key) |
 | `ssl_subject` | No | SSL certificate details for peer connections. Required for non-validator nodes |
 | `ledger_history` | No | Number of ledgers to retain. Default: `6000` |
-| `node_size` | No | rippled node size (tiny, small, medium, large, huge). Default: `medium` |
+| `node_size` | No | `rippled` node size (tiny, small, medium, large, huge). Default: `medium` |
 
 ### Module-Level Configuration
 
@@ -166,7 +167,7 @@ Each node in the `nodes` list accepts:
 | `vpc_cidr` | VPC CIDR block | `10.0.0.0/16` |
 | `patch_schedule` | Cron for OS patching (UTC) | `cron(0 11 ? * MON *)` (Mondays 11:00 UTC) |
 | `log_retention_days` | CloudWatch log retention | `30` |
-| `rippled_log_max_size_mb` | Max rippled log size before rotation | `1024` |
+| `rippled_log_max_size_mb` | Max `rippled` log size before rotation | `1024` |
 | `rippled_log_max_files` | Rotated log files to keep | `10` |
 | `ansible_role_principals` | IAM ARNs that can assume Ansible role | `[]` |
 | `alarm_thresholds` | Alarm threshold configuration (see below) | See defaults |
@@ -227,14 +228,14 @@ If you're migrating an existing validator or want to use specific keys:
 ```bash
 # Create the secret with your existing keys
 aws secretsmanager create-secret --region ap-south-1 \
-  --name "rippled/myenv/secret/validator" \
+  --name "`rippled`/myenv/secret/validator" \
   --secret-string '{
     "validation_seed": "ssYourExistingSeed...",
     "validator_token": "eyYourExistingToken..."
   }'
 
 aws secretsmanager create-secret --region ap-south-1 \
-  --name "rippled/myenv/var/validator" \
+  --name "`rippled`/myenv/var/validator" \
   --secret-string '{
     "validation_public_key": "n9YourExistingPublicKey..."
   }'
@@ -245,9 +246,9 @@ When Ansible runs, it will detect these existing secrets and use them instead of
 
 ### wallet.db Persistence
 
-rippled stores node identity in `wallet.db`. Since NVMe storage is ephemeral, systemd services handle backup/restore:
+`rippled` stores node identity in `wallet.db`. Since NVMe storage is ephemeral, systemd services handle backup/restore:
 
-- **On boot**: Restores wallet.db from S3 before rippled starts
+- **On boot**: Restores wallet.db from S3 before `rippled` starts
 - **Hourly**: Backs up wallet.db to S3
 - **On stop**: Backs up wallet.db before shutdown
 
@@ -274,17 +275,17 @@ aws ssm start-session --region <region> --target <instance-id>
 3. Configure new node: `ansible-playbook playbooks/site.yml -l name_myenv_node_X`
 4. Update cluster config on all nodes: `ansible-playbook playbooks/site.yml -l env_myenv`
 
-## Upgrading rippled
+## Upgrading `rippled`
 
 ```bash
 # Connect to instance
 aws ssm start-session --region <region> --target <instance-id>
 
 # Run upgrade
-sudo /usr/local/bin/update-rippled-aws
+sudo /usr/local/bin/update-`rippled`-aws
 
 # Verify
-rippled server_info | grep build_version
+`rippled` server_info | grep build_version
 ```
 
 For rolling upgrades: upgrade nodes first (wait for `full` state), then validator last.
@@ -298,11 +299,11 @@ ansible-playbook playbooks/site.yml -l env_myenv
 # Run on specific instance
 ansible-playbook playbooks/site.yml -l name_myenv_node_1
 
-# Restart rippled everywhere
-ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
+# Restart `rippled` everywhere
+ansible env_myenv -m systemd -a "name=`rippled` state=restarted" --become
 
 # Check server state
-ansible env_myenv -m shell -a "rippled server_info | jq .result.info.server_state" --become
+ansible env_myenv -m shell -a "`rippled` server_info | jq .result.info.server_state" --become
 
 # List available hosts
 ansible-inventory -i inventory/aws_ec2.yml --graph
@@ -311,9 +312,9 @@ ansible-inventory -i inventory/aws_ec2.yml --graph
 ## Monitoring
 
 The module creates:
-- **CloudWatch Dashboard**: `rippled-<environment>` with server state, peers, ledger metrics, system metrics
+- **CloudWatch Dashboard**: `rippled-<env>` with server state, peers, ledger metrics, system metrics
 - **CloudWatch Alarms**: Server state, ledger age, peer count, cluster connectivity, disk/memory/CPU, reboot required
-- **SNS Topics**: `<environment>-rippled-alerts` for notifications
+- **SNS Topics**: `<env>-`rippled`-alerts` for notifications
 
 Subscribe to the SNS topic for alerts (email, PagerDuty, Discord, etc.).
 
@@ -341,7 +342,7 @@ Then add the token to your validator's secret:
 
 ```bash
 aws secretsmanager update-secret --region <region> \
-  --secret-id "rippled/myenv/secret/validator" \
+  --secret-id "`rippled`/myenv/secret/validator" \
   --secret-string '{
     "validation_seed": "ssExistingSeed...",
     "validator_token": "validation_secret_key..."
@@ -357,10 +358,10 @@ ansible-playbook playbooks/site.yml -l name_myenv_validator
 The validator will now participate in consensus. You can verify with:
 
 ```bash
-rippled server_info | grep server_state
+`rippled` server_info | grep server_state
 ```
 
 # TODO
 
-- [ ] Use https://data.xrpl.org/v1/network/validators/test to check how we are doing
+- [ ] Use https://data.xrpl.org/v1/network/validators/test to check how we are doing, and send an alert if the validator is offline or missing too many rounds
 - [ ] Setup domain name TOML
