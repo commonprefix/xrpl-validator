@@ -1,7 +1,7 @@
 plugin: aws_ec2
-assume_role_arn: arn:aws:iam::065810619864:role/testnet-ansible
+assume_role_arn: arn:aws:iam::123456789012:role/testnet-ansible
 regions:
-  - ap-south-1
+  - us-east-1
 
 filters:
   tag:Environment:
@@ -24,7 +24,7 @@ compose:
   ansible_host: instance_id
   ansible_connection: "'community.aws.aws_ssm'"
   ansible_aws_ssm_region: placement.region
-  ansible_aws_ssm_bucket_name: "'065810619864-testnet-ansible-ssm'"
+  ansible_aws_ssm_bucket_name: "'123456789012-testnet-ansible-ssm'"
   private_ip: private_ip_address
   rippled_secret_name: tags.SecretName
   rippled_var_secret_name: tags.VarSecretName

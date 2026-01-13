@@ -45,11 +45,17 @@ For more background, see the [Rabbitkick XRPL Validator Guide](https://rabbitkic
 
 ## Structure
 
-Infrastructure is managed by Terraform, while EC2 provisioning is done by Ansible.
+This repo contains reusable infrastructure code:
+
+- `terraform/modules/validator-cluster/` - Terraform module for the full cluster
+- `ansible/roles/` - Ansible roles for configuring instances
+- `ansible/playbooks/` - Ansible playbooks
+
+Your actual deployment config (with your AWS account IDs, regions, etc.) lives in a separate private repo that references this one as a git submodule. See `terraform/example/` and `ansible/example/` for reference configurations.
 
 ### Environments
 
-Each environment (e.g., `testnet`, `mainnet`) is a completely isolated cluster with its own VPC, EC2 instances, secrets, and monitoring. Environments are defined in `terraform/<environment>/main.tf`. See `terraform/testnet/` as a reference.
+Each environment (e.g., `testnet`, `mainnet`) is a completely isolated cluster with its own VPC, EC2 instances, secrets, and monitoring.
 
 #### VPC and Networking
 
@@ -94,7 +100,7 @@ Also, each cluster gets its dashboard:
 
 ### Ansible
 
-Ansible configures the instances after Terraform provisions them. It uses a dynamic inventory (`ansible/inventory/aws_ec2.yml`) that discovers instances by EC2 tags. Instances are grouped by:
+Ansible configures the instances after Terraform provisions them. It uses a dynamic inventory that discovers instances by EC2 tags. Instances are grouped by:
 - `env_<environment>` - all instances in an environment (e.g., `env_testnet`)
 - `name_<name>` - individual instances (e.g., `name_testnet_validator`)
 - `role_validator` / `role_node` - by role
@@ -119,24 +125,69 @@ User or process running Terraform needs an IAM role with permissions for EC2, VP
 - **SSM**: Patch baselines, maintenance windows
 - **S3**: State bucket access, Ansible SSM bucket, wallet.db backup bucket
 
-## Steps
+## Setup
 
-### 1. Deploy Infrastructure
+### 1. Create your private deployment repo
 
 ```bash
-export AWS_PROFILE=your-profile
-cd terraform/<env>
+mkdir my-xrpl-deployment && cd my-xrpl-deployment
+git init
+git submodule add https://github.com/commonprefix/xrpl-validator.git xrpl-validator
+mkdir -p terraform/testnet ansible/inventory
+```
+
+### 2. Create your Terraform config
+
+Copy from the example and customize:
+
+```bash
+cp xrpl-validator/terraform/example/* terraform/testnet/
+```
+
+Edit `terraform/testnet/main.tf`:
+- Update the S3 backend with your state bucket
+- Update the provider with your IAM role ARN
+- Update the module source to point to the submodule:
+  ```hcl
+  module "cluster" {
+    source = "../../xrpl-validator/terraform/modules/validator-cluster"
+    # ...
+  }
+  ```
+- Configure your nodes, region, etc.
+
+### 3. Create your Ansible config
+
+Copy from the example and customize:
+
+```bash
+cp xrpl-validator/ansible/example/* ansible/
+mv ansible/aws_ec2.yml ansible/inventory/
+```
+
+Edit `ansible/inventory/aws_ec2.yml` with your IAM role ARN and SSM bucket.
+
+Edit `ansible/ansible.cfg` to point to the submodule:
+```ini
+[defaults]
+inventory = inventory/aws_ec2.yml
+roles_path = ../xrpl-validator/ansible/roles
+```
+
+### 4. Deploy Infrastructure
+
+```bash
+cd terraform/testnet
 terraform init
 terraform plan
 terraform apply
 ```
 
-### 2. Configure Instances with Ansible
+### 5. Configure Instances with Ansible
 
 ```bash
 cd ansible
-export AWS_PROFILE=your-profile
-ansible-playbook playbooks/site.yml -l env_<env>
+ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l env_testnet
 ```
 
 ## Node Configuration Reference
@@ -294,12 +345,14 @@ For rolling upgrades: upgrade nodes first (wait for `full` state), then validato
 
 ## Useful Commands
 
+From your private deployment repo's `ansible/` directory:
+
 ```bash
 # Run on all instances in environment
-ansible-playbook playbooks/site.yml -l env_myenv
+ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l env_myenv
 
 # Run on specific instance
-ansible-playbook playbooks/site.yml -l name_myenv_node_1
+ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l name_myenv_node_1
 
 # Restart rippled everywhere
 ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
@@ -308,7 +361,7 @@ ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
 ansible env_myenv -m shell -a "rippled server_info | jq .result.info.server_state" --become
 
 # List available hosts
-ansible-inventory -i inventory/aws_ec2.yml --graph
+ansible-inventory --graph
 ```
 
 ## Monitoring
