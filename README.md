@@ -207,6 +207,8 @@ Each node in the `nodes` list accepts:
 | `ssl_subject` | No | SSL certificate details for peer connections. Required for non-validator nodes |
 | `ledger_history` | No | Number of ledgers to retain. Default: `6000` |
 | `node_size` | No | `rippled` node size (tiny, small, medium, large, huge). Default: `medium` |
+| `domain` | No | Domain for validator verification. Only valid on the validator node. |
+| `hosted_zone_id` | No | Route53 hosted zone ID. Requires `domain` to be set. |
 
 ### Module-Level Configuration
 
@@ -416,7 +418,65 @@ The validator will now participate in consensus. You can verify with:
 rippled server_info | grep server_state
 ```
 
+## Domain Verification
+
+XRPL validators can associate themselves with a domain by serving a `xrp-ledger.toml` file. This lets network participants verify that a validator is operated by who they claim to be. See the [xrp-ledger.toml specification](https://xrpl.org/docs/references/xrp-ledger-toml) for full details.
+
+When you set `domain` on the validator node, Terraform creates:
+- S3 bucket for hosting the `xrp-ledger.toml` file
+- CloudFront distribution serving the bucket over HTTPS
+- ACM certificate for the domain
+
+If you also set `hosted_zone_id`, Terraform additionally:
+- Creates DNS validation records for the ACM certificate
+- Creates a Route53 A record pointing the domain to CloudFront
+
+### Setup
+
+1. Add `domain` and optionally `hosted_zone_id` to your validator node:
+
+```hcl
+{
+  name           = "myenv-validator"
+  validator      = true
+  domain         = "validator.example.com"
+  hosted_zone_id = "Z0123456789ABCDEFGHIJ"  # optional
+  # ... other fields
+}
+```
+
+2. Run `terraform apply`. If you provided `hosted_zone_id`, wait for the certificate to validate (this happens automatically via DNS).
+
+3. Generate attestation. Copy your validator-keys.json to a secure location and run:
+
+```bash
+/opt/ripple/bin/validator-keys set_domain your-domain.com
+```
+
+4. Create your `xrp-ledger.toml` file. Instructions are at [xrpl.org](https://xrpl.org/docs/references/xrp-ledger-toml).
+
+5. Upload the file to S3:
+
+```bash
+aws s3 cp xrp-ledger.toml s3://<env>-xrpl-validator-domain-verification/.well-known/xrp-ledger.toml
+```
+
+6. Verify it's working
+
+```bash
+curl https://validator.example.com/.well-known/xrp-ledger.toml
+```
+
+And use https://xrpl.org/resources/dev-tools/xrp-ledger-toml-checker 
+and https://xrpl.org/resources/dev-tools/domain-verifier
+
+The S3 bucket is locked down - only CloudFront can read from it, and uploads require IAM credentials with write permissions.
+
+> [!WARNING]  
+> CORS Policy
+
+The s3 bucket where TOML file is hosted by default has `Access-Control-Allow-Origin: *` CORS policy. Please do not use this bucket to serve files where this is inappropriate.
+
 # TODO
 
 - [ ] Use https://data.xrpl.org/v1/network/validators/test to check how we are doing, and send an alert if the validator is offline or missing too many rounds
-- [ ] Setup domain name TOML

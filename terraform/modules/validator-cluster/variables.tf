@@ -37,6 +37,8 @@ variable "nodes" {
       o  = string # Organization
       c  = string # Country
     }), null)
+    domain         = optional(string, null) # Domain for validator verification (e.g., testnet.validator.xrpl.commonprefix.com)
+    hosted_zone_id = optional(string, null) # Route53 hosted zone ID for DNS record (requires domain to be set)
   }))
 
   validation {
@@ -52,6 +54,16 @@ variable "nodes" {
   validation {
     condition     = alltrue([for n in var.nodes : !(n.validator == true && n.public == true)])
     error_message = "A validator cannot be public."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.hosted_zone_id == null || n.domain != null])
+    error_message = "hosted_zone_id requires domain to be set."
+  }
+
+  validation {
+    condition     = alltrue([for n in var.nodes : n.domain == null || n.validator == true])
+    error_message = "domain can only be set on the validator node."
   }
 }
 

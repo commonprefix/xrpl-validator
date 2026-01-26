@@ -28,3 +28,13 @@ output "ansible_ssm_bucket" {
   description = "Name of the S3 bucket for Ansible SSM sessions"
   value       = length(aws_s3_bucket.ansible_ssm) > 0 ? aws_s3_bucket.ansible_ssm[0].id : null
 }
+
+output "domain_verification_bucket" {
+  description = "Name of the S3 bucket for domain verification files"
+  value       = length(aws_s3_bucket.domain_verification) > 0 ? aws_s3_bucket.domain_verification[0].id : null
+}
+
+output "domain_verification_cloudfront_domain" {
+  description = "CloudFront distribution domain name for domain verification"
+  value       = length(aws_cloudfront_distribution.domain_verification) > 0 ? aws_cloudfront_distribution.domain_verification[0].domain_name : null
+}
