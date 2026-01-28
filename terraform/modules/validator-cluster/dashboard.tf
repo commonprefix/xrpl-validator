@@ -14,7 +14,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
           x      = 0
           y      = 0
           width  = 24
-          height = 3
+          height = 4
           properties = {
             title  = "Alarm Status"
             alarms = concat(
@@ -22,7 +22,9 @@ resource "aws_cloudwatch_dashboard" "rippled" {
               [for name, _ in aws_instance.node : aws_cloudwatch_metric_alarm.ledger_age[name].arn],
               [for name, _ in aws_instance.node : aws_cloudwatch_metric_alarm.peer_count[name].arn],
               [for name, _ in aws_instance.node : aws_cloudwatch_metric_alarm.cluster_count[name].arn],
-              [for name, _ in aws_instance.node : aws_cloudwatch_metric_alarm.needs_reboot[name].arn]
+              [for name, _ in aws_instance.node : aws_cloudwatch_metric_alarm.needs_reboot[name].arn],
+              [aws_cloudwatch_metric_alarm.validator_miss_hourly.arn],
+              [aws_cloudwatch_metric_alarm.validator_miss_daily.arn]
             )
           }
         }
@@ -32,7 +34,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "log"
           x      = 0
-          y      = 3
+          y      = 4
           width  = 24
           height = 6
           properties = {
@@ -391,6 +393,50 @@ resource "aws_cloudwatch_dashboard" "rippled" {
             ]
             stat   = "Average"
             period = 60
+          }
+        }
+      ],
+      # Validator Stats (from XRPL data API)
+      [
+        {
+          type   = "metric"
+          x      = 0
+          y      = 63
+          width  = 12
+          height = 6
+          properties = {
+            title  = "Validator Agreement Score %"
+            region = var.region
+            metrics = [
+              ["rippled", "validator_agreement_1h", "InstanceId", aws_instance.node[local.validator.name].id, { label = "1 hour" }],
+              ["rippled", "validator_agreement_24h", "InstanceId", aws_instance.node[local.validator.name].id, { label = "24 hours" }],
+              ["rippled", "validator_agreement_30d", "InstanceId", aws_instance.node[local.validator.name].id, { label = "30 days" }]
+            ]
+            stat   = "Average"
+            period = 180
+          }
+        },
+        {
+          type   = "metric"
+          x      = 12
+          y      = 63
+          width  = 12
+          height = 6
+          properties = {
+            title  = "Validator Missed Validations"
+            region = var.region
+            metrics = [
+              ["rippled", "validator_missed_1h", "InstanceId", aws_instance.node[local.validator.name].id, { label = "1 hour" }],
+              ["rippled", "validator_missed_24h", "InstanceId", aws_instance.node[local.validator.name].id, { label = "24 hours" }]
+            ]
+            stat   = "Maximum"
+            period = 180
+            annotations = {
+              horizontal = [
+                { label = "Hourly threshold", value = local.validator_miss_hourly_threshold, color = "#ff7f0e" },
+                { label = "Daily threshold", value = local.validator_miss_daily_threshold, color = "#d62728" }
+              ]
+            }
           }
         }
       ]

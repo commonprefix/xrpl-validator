@@ -476,7 +476,3 @@ The S3 bucket is locked down - only CloudFront can read from it, and uploads req
 > CORS Policy
 
 The s3 bucket where TOML file is hosted by default has `Access-Control-Allow-Origin: *` CORS policy. Please do not use this bucket to serve files where this is inappropriate.
-
-# TODO
-
-- [ ] Use https://data.xrpl.org/v1/network/validators/test to check how we are doing, and send an alert if the validator is offline or missing too many rounds

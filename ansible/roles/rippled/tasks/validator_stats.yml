@@ -1,0 +1,54 @@
+# Validator stats monitoring - fetches from XRPL data API
+# Only runs on validator nodes
+
+- name: Create validator stats script
+  ansible.builtin.template:
+    src: validator-stats.sh.j2
+    dest: /usr/local/bin/validator-stats.sh
+    mode: "0755"
+  when: "'role_validator' in group_names"
+
+- name: Create systemd service for validator stats
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/validator-stats.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Fetch validator stats from XRPL data API
+      After=rippled.service
+
+      [Service]
+      Type=oneshot
+      User=rippled
+      ExecStart=/usr/local/bin/validator-stats.sh
+      TimeoutStartSec=60
+  when: "'role_validator' in group_names"
+
+- name: Create systemd timer for validator stats (every 3 minutes)
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/validator-stats.timer
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run validator stats every 3 minutes
+
+      [Timer]
+      OnCalendar=*:0/3
+      AccuracySec=30s
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  when: "'role_validator' in group_names"
+
+- name: Reload systemd daemon for validator stats
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: "'role_validator' in group_names"
+
+- name: Enable and start validator stats timer
+  ansible.builtin.systemd:
+    name: validator-stats.timer
+    state: started
+    enabled: true
+  when: "'role_validator' in group_names"

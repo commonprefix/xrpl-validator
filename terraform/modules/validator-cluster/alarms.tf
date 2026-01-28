@@ -1,6 +1,10 @@
 locals {
   cluster_size           = length(var.nodes)
   expected_cluster_count = local.cluster_size - 1 # Each node sees N-1 cluster peers
+
+  # Validator miss thresholds (used in alarms and dashboard)
+  validator_miss_hourly_threshold = 100
+  validator_miss_daily_threshold  = 200
 }
 
 resource "aws_sns_topic" "alerts" {
@@ -311,6 +315,55 @@ resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
     "arn:aws:automate:${var.region}:ec2:reboot",
     aws_sns_topic.alerts.arn
   ]
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+# Validator miss alarms - only for the validator node
+resource "aws_cloudwatch_metric_alarm" "validator_miss_hourly" {
+  alarm_name          = "${local.validator.name}-validator-miss-hourly"
+  alarm_description   = "${local.validator.name} has more than ${local.validator_miss_hourly_threshold} missed validations in the last hour"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "validator_missed_1h"
+  namespace           = "rippled"
+  period              = 180
+  statistic           = "Maximum"
+  threshold           = local.validator_miss_hourly_threshold
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    InstanceId = aws_instance.node[local.validator.name].id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "validator_miss_daily" {
+  alarm_name          = "${local.validator.name}-validator-miss-daily"
+  alarm_description   = "${local.validator.name} has more than ${local.validator_miss_daily_threshold} missed validations in the last 24 hours"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "validator_missed_24h"
+  namespace           = "rippled"
+  period              = 180
+  statistic           = "Maximum"
+  threshold           = local.validator_miss_daily_threshold
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    InstanceId = aws_instance.node[local.validator.name].id
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
 
   tags = {
     Environment = var.environment

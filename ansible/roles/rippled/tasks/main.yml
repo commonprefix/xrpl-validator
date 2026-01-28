@@ -21,6 +21,9 @@
 - name: Setup CloudWatch metrics
   ansible.builtin.include_tasks: metrics.yml
 
+- name: Setup validator stats monitoring
+  ansible.builtin.include_tasks: validator_stats.yml
+
 # =============================================================================
 # Backup wallet.db to S3 after rippled creates it (must run after rippled is setup)
 # =============================================================================

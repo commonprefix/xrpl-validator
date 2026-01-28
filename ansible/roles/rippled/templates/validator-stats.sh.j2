@@ -1,0 +1,75 @@
+#!/bin/bash
+# Fetch validator stats from XRPL data API and publish to CloudWatch
+# Only runs on validator nodes
+
+INSTANCE_ID=$(/usr/bin/ec2-metadata -i | cut -d' ' -f2)
+REGION=$(/usr/bin/ec2-metadata -z | cut -d' ' -f2 | sed 's/.$//')
+
+# Get validator's master public key from rippled
+SERVER_INFO=$(timeout 5 /opt/ripple/bin/rippled server_info 2>/dev/null)
+if [ $? -ne 0 ] || [ -z "$SERVER_INFO" ]; then
+  echo "Failed to get server_info from rippled"
+  exit 1
+fi
+
+PUBKEY_VALIDATOR=$(echo "$SERVER_INFO" | /usr/bin/jq -r '.result.info.pubkey_validator // ""')
+if [ -z "$PUBKEY_VALIDATOR" ] || [ "$PUBKEY_VALIDATOR" = "none" ]; then
+  echo "No validator public key found - is this a validator?"
+  exit 1
+fi
+
+# Determine API endpoint based on environment
+{% if env_name == 'mainnet' %}
+API_URL="https://data.xrpl.org/v1/network/validators/main"
+{% else %}
+API_URL="https://data.xrpl.org/v1/network/validators/test"
+{% endif %}
+
+# Fetch validator stats from XRPL data API
+VALIDATORS_DATA=$(timeout 30 curl -s "$API_URL")
+if [ $? -ne 0 ] || [ -z "$VALIDATORS_DATA" ]; then
+  echo "Failed to fetch validator stats from $API_URL"
+  exit 1
+fi
+
+# Find our validator in the response by validation_public_key (master key)
+VALIDATOR_STATS=$(echo "$VALIDATORS_DATA" | /usr/bin/jq -r --arg pk "$PUBKEY_VALIDATOR" '.validators[] | select(.validation_public_key == $pk)')
+
+if [ -z "$VALIDATOR_STATS" ]; then
+  echo "Validator $PUBKEY_VALIDATOR not found in API response - treating as missing data point"
+  exit 0
+fi
+
+# Extract metrics
+# Agreement scores (0-1 scale, will display as percentage in CloudWatch)
+AGREEMENT_1H=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_1h.score // 0' | sed 's/null/0/')
+AGREEMENT_24H=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_24h.score // 0' | sed 's/null/0/')
+AGREEMENT_30D=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_30day.score // 0' | sed 's/null/0/')
+
+# Missed validations (from agreement objects)
+MISSED_1H=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_1h.missed // 0' | sed 's/null/0/')
+MISSED_24H=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_24h.missed // 0' | sed 's/null/0/')
+MISSED_30D=$(echo "$VALIDATOR_STATS" | /usr/bin/jq -r '.agreement_30day.missed // 0' | sed 's/null/0/')
+
+# Handle null/empty values
+[ "$AGREEMENT_1H" = "null" ] || [ -z "$AGREEMENT_1H" ] && AGREEMENT_1H=0
+[ "$AGREEMENT_24H" = "null" ] || [ -z "$AGREEMENT_24H" ] && AGREEMENT_24H=0
+[ "$AGREEMENT_30D" = "null" ] || [ -z "$AGREEMENT_30D" ] && AGREEMENT_30D=0
+[ "$MISSED_1H" = "null" ] || [ -z "$MISSED_1H" ] && MISSED_1H=0
+[ "$MISSED_24H" = "null" ] || [ -z "$MISSED_24H" ] && MISSED_24H=0
+[ "$MISSED_30D" = "null" ] || [ -z "$MISSED_30D" ] && MISSED_30D=0
+
+# Publish metrics to CloudWatch
+/usr/bin/aws cloudwatch put-metric-data \
+  --region "$REGION" \
+  --namespace "rippled" \
+  --metric-data "[
+    {\"MetricName\": \"validator_agreement_1h\", \"Value\": $AGREEMENT_1H, \"Unit\": \"Percent\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"validator_agreement_24h\", \"Value\": $AGREEMENT_24H, \"Unit\": \"Percent\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"validator_agreement_30d\", \"Value\": $AGREEMENT_30D, \"Unit\": \"Percent\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"validator_missed_1h\", \"Value\": $MISSED_1H, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"validator_missed_24h\", \"Value\": $MISSED_24H, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]},
+    {\"MetricName\": \"validator_missed_30d\", \"Value\": $MISSED_30D, \"Unit\": \"Count\", \"Dimensions\": [{\"Name\": \"InstanceId\", \"Value\": \"$INSTANCE_ID\"}]}
+  ]"
+
+echo "Published validator stats: agreement_1h=$AGREEMENT_1H agreement_24h=$AGREEMENT_24H agreement_30d=$AGREEMENT_30D missed_1h=$MISSED_1H missed_24h=$MISSED_24H missed_30d=$MISSED_30D"
