@@ -59,7 +59,7 @@ LEDGER_HASH=$(echo "$INFO" | /usr/bin/jq -r '.validated_ledger.hash // "unknown"
 
 /usr/bin/aws logs put-log-events \
   --region "$REGION" \
-  --log-group-name "/rippled/server-info" \
+  --log-group-name "/rippled/{{ rippled_environment }}/server-info" \
   --log-stream-name "$INSTANCE_ID" \
   --log-events "[{
     \"timestamp\": $(date +%s000),

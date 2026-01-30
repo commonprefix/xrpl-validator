@@ -114,3 +114,15 @@ variable "alarm_thresholds" {
     cpu_used_percent       = 75
   }
 }
+
+variable "discord_webhook_secret_name" {
+  description = "Name of the Secrets Manager secret containing the Discord webhook URL. Secret should have format: {\"webhook_url\": \"https://discord.com/api/webhooks/...\"}"
+  type        = string
+  default     = null
+}
+
+variable "enable_alarm_actions" {
+  description = "Enable alarm actions. Set to false for initial deployment before Ansible configures instances, then set to true after."
+  type        = bool
+  default     = true
+}

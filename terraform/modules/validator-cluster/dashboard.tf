@@ -40,7 +40,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
           properties = {
             title  = "Server Info (Latest) - ${var.region}"
             region = var.region
-            query  = "SOURCE '/rippled/server-info' | fields @timestamp, instance_id, public_ip, build_version, server_state, pubkey_node, pubkey_validator, complete_ledgers, ledger_hash | sort @timestamp desc | dedup instance_id"
+            query  = "SOURCE '/rippled/${var.environment}/server-info' | fields @timestamp, instance_id, public_ip, build_version, server_state, pubkey_node, pubkey_validator, complete_ledgers, ledger_hash | sort @timestamp desc | dedup instance_id"
           }
         }
       ],
@@ -445,7 +445,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
 }
 
 resource "aws_cloudwatch_log_group" "rippled_server_info" {
-  name              = "/rippled/server-info"
+  name              = "/rippled/${var.environment}/server-info"
   retention_in_days = var.log_retention_days
 
   tags = {

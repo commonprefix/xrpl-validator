@@ -6,7 +6,8 @@ data "aws_ami" "amazon_linux" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    # Match standard AL2023 AMIs, exclude minimal (no SSM agent) and ECS variants
+    values = ["al2023-ami-2023.*-kernel-*-x86_64"]
   }
 }
 

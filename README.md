@@ -176,10 +176,22 @@ roles_path = ../xrpl-validator/ansible/roles
 
 ### 4. Deploy Infrastructure
 
+**Important:** For new environments, add `enable_alarm_actions = false` to your Terraform config. This prevents the instance-status-check alarm from auto-rebooting instances before Ansible has a chance to configure them.
+
+```hcl
+# In terraform/testnet/main.tf
+module "cluster" {
+  source = "../../xrpl-validator/terraform/modules/validator-cluster"
+  # ... other config ...
+  enable_alarm_actions = false
+}
+```
+
+Then apply:
+
 ```bash
 cd terraform/testnet
 terraform init
-terraform plan
 terraform apply
 ```
 
@@ -189,6 +201,62 @@ terraform apply
 cd ansible
 ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l env_testnet
 ```
+
+### 6. Enable Alarm Actions
+
+After Ansible completes successfully, remove `enable_alarm_actions = false` (or set it to `true`) and re-apply Terraform to enable monitoring:
+
+```bash
+terraform apply
+```
+
+### 7. Validator Token
+
+When Ansible first runs on a new validator, it doesn't generate validator token, which is necessary to **participate in consensus**.
+
+You have to do this manually, since you may want to end up storing the key in a secure location which is never online.
+
+The key generated in this step is stored in `~/.ripple/validator-keys.json`. We suggest that, once you are done with the process, you delete it and move it to a secure location.
+
+Generate a validator token on a secure machine:
+
+```bash
+# Generate the master key (store this securely offline!)
+/opt/ripple/bin/validator-keys create_keys
+# Output: validator-keys.json in ~/.ripple/
+
+# Optionally set your domain for identification
+/opt/ripple/bin/validator-keys set_domain yourdomain.com
+
+# Generate a token from the master key
+/opt/ripple/bin/validator-keys create_token
+```
+
+Then add the token to your validator's secret (it might be easiest to use AWS Console to do this, but API call would look like). You can reformat the token to be in one line so it fits JSON nicely.
+
+```bash
+aws secretsmanager update-secret --region <region> \
+  --secret-id "rippled/myenv/secret/validator" \
+  --secret-string '{
+    "validation_seed": "ssExistingSeed...",
+    "validator_token": "validation_secret_key..."
+  }'
+```
+
+This is also a good time to create your [domain verification file](#domain-verification).
+
+Re-run Ansible on the validator to apply:
+
+```bash
+ansible-playbook playbooks/site.yml -l name_myenv_validator
+```
+
+The validator will now participate in consensus. You can verify with:
+
+```bash
+rippled server_info | grep server_state
+```
+
 
 ## Node Configuration Reference
 
@@ -222,6 +290,7 @@ Each node in the `nodes` list accepts:
 | `log_retention_days` | CloudWatch log retention | `30` |
 | `rippled_log_max_size_mb` | Max `rippled` log size before rotation | `1024` |
 | `rippled_log_max_files` | Rotated log files to keep | `10` |
+| `enable_alarm_actions` | Enable alarm actions. Set `false` for initial deployment. | `true` |
 | `ansible_role_principals` | IAM ARNs that can assume Ansible role | `[]` |
 | `alarm_thresholds` | Alarm threshold configuration (see below) | See defaults |
 
@@ -377,46 +446,6 @@ Subscribe to the SNS topic for alerts (email, PagerDuty, Discord, etc.).
 
 The dashboard is created for every environment. Since it is managed by Terraform, please resist the urge to change it directly in AWS console.
 
-## Validator Token
-
-When Ansible first runs on a new validator, it generates a `validation_seed` which gives the node a **peer identity** for cluster communication. However, to actually **participate in consensus** (propose and vote on transactions), you need a `validator_token`.
-
-Generate a validator token on a secure machine:
-
-```bash
-# Generate the master key (store this securely offline!)
-/opt/ripple/bin/validator-keys create_keys
-# Output: validator-keys.json in ~/.ripple/
-
-# Optionally set your domain for identification
-/opt/ripple/bin/validator-keys set_domain yourdomain.com
-
-# Generate a token from the master key
-/opt/ripple/bin/validator-keys create_token
-```
-
-Then add the token to your validator's secret:
-
-```bash
-aws secretsmanager update-secret --region <region> \
-  --secret-id "rippled/myenv/secret/validator" \
-  --secret-string '{
-    "validation_seed": "ssExistingSeed...",
-    "validator_token": "validation_secret_key..."
-  }'
-```
-
-Re-run Ansible on the validator to apply:
-
-```bash
-ansible-playbook playbooks/site.yml -l name_myenv_validator
-```
-
-The validator will now participate in consensus. You can verify with:
-
-```bash
-rippled server_info | grep server_state
-```
 
 ## Domain Verification
 

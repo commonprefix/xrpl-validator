@@ -26,6 +26,7 @@ compose:
   ansible_aws_ssm_region: placement.region
   ansible_aws_ssm_bucket_name: "'123456789012-testnet-ansible-ssm'"
   private_ip: private_ip_address
+  rippled_environment: tags.Environment
   rippled_secret_name: tags.SecretName
   rippled_var_secret_name: tags.VarSecretName
   rippled_ledger_history: tags.LedgerHistory | default('256')

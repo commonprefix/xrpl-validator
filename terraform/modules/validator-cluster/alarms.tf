@@ -26,7 +26,8 @@ resource "aws_sns_topic" "reboot_required" {
 resource "aws_cloudwatch_metric_alarm" "server_state" {
   for_each = aws_instance.node
 
-  alarm_name = "${each.key}-server-state"
+  alarm_name      = "${each.key}-server-state"
+  actions_enabled = var.enable_alarm_actions
   alarm_description = local.nodes_by_name[each.key].validator ? (
     "${each.key} is not in proposing state"
   ) : "${each.key} is not in full state"
@@ -55,6 +56,7 @@ resource "aws_cloudwatch_metric_alarm" "ledger_seq" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-no-ledger"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} has no validated ledger"
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 3
@@ -81,6 +83,7 @@ resource "aws_cloudwatch_metric_alarm" "cluster_count" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-cluster-count"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} cluster peer count is less than expected"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
@@ -108,6 +111,7 @@ resource "aws_cloudwatch_metric_alarm" "ledger_age" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-ledger-age"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} ledger age is too high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -133,7 +137,8 @@ resource "aws_cloudwatch_metric_alarm" "ledger_age" {
 resource "aws_cloudwatch_metric_alarm" "peer_count" {
   for_each = aws_instance.node
 
-  alarm_name = "${each.key}-peer-count"
+  alarm_name      = "${each.key}-peer-count"
+  actions_enabled = var.enable_alarm_actions
   alarm_description = local.nodes_by_name[each.key].validator ? (
     "${each.key} peer count is less than expected"
   ) : "${each.key} peer count is too low"
@@ -163,6 +168,7 @@ resource "aws_cloudwatch_metric_alarm" "disk_nvme" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-disk-nvme"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} NVMe disk usage is high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -192,6 +198,7 @@ resource "aws_cloudwatch_metric_alarm" "disk_root" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-disk-root"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} root disk usage is high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -221,6 +228,7 @@ resource "aws_cloudwatch_metric_alarm" "memory" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-memory"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} memory usage is high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -247,6 +255,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-cpu"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} CPU usage is high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
@@ -273,6 +282,7 @@ resource "aws_cloudwatch_metric_alarm" "needs_reboot" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-needs-reboot"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} requires a reboot"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
@@ -298,6 +308,7 @@ resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
   for_each = aws_instance.node
 
   alarm_name          = "${each.key}-instance-status-check"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${each.key} failed instance status check - auto rebooting"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
@@ -324,6 +335,7 @@ resource "aws_cloudwatch_metric_alarm" "instance_status_check" {
 # Validator miss alarms - only for the validator node
 resource "aws_cloudwatch_metric_alarm" "validator_miss_hourly" {
   alarm_name          = "${local.validator.name}-validator-miss-hourly"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${local.validator.name} has more than ${local.validator_miss_hourly_threshold} missed validations in the last hour"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
@@ -348,6 +360,7 @@ resource "aws_cloudwatch_metric_alarm" "validator_miss_hourly" {
 
 resource "aws_cloudwatch_metric_alarm" "validator_miss_daily" {
   alarm_name          = "${local.validator.name}-validator-miss-daily"
+  actions_enabled     = var.enable_alarm_actions
   alarm_description   = "${local.validator.name} has more than ${local.validator_miss_daily_threshold} missed validations in the last 24 hours"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
