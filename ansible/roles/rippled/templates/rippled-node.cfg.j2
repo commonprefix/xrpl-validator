@@ -108,7 +108,7 @@ validators.txt
 2
 
 [peers_max]
-21
+{{ rippled_peers_max | default(21) }}
 
 [path_search_max]
 10

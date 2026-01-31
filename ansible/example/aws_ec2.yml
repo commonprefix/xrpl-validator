@@ -31,6 +31,7 @@ compose:
   rippled_var_secret_name: tags.VarSecretName
   rippled_ledger_history: tags.LedgerHistory | default('256')
   rippled_node_size: tags.NodeSize | default('medium')
+  rippled_peers_max: tags.PeersMax | default('21')
   rippled_log_max_size_mb: tags.LogMaxSizeMB | default('1024')
   rippled_log_max_files: tags.LogMaxFiles | default('10')
   rippled_wallet_db_s3_bucket: tags.WalletDbS3Bucket

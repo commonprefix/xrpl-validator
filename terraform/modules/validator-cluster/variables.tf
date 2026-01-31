@@ -28,6 +28,7 @@ variable "nodes" {
     availability_zone = number # Index into var.availability_zones (0, 1, etc.)
     ledger_history    = optional(string, "6000")
     node_size         = optional(string, "medium")
+    peers_max         = optional(number, 21)
     validator         = optional(bool, false) # True for the validator node (private, no SSL)
     public            = optional(bool, false) # Public nodes get public IPs and are in public subnets
     secret_name       = string                # Sensitive data (validation_seed, validator_token for validator)

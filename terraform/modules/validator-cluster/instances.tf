@@ -49,6 +49,7 @@ resource "aws_instance" "node" {
       VarSecretName    = each.value.var_secret_name
       LedgerHistory    = each.value.ledger_history
       NodeSize         = each.value.node_size
+      PeersMax         = each.value.peers_max
       LogMaxSizeMB     = var.rippled_log_max_size_mb
       LogMaxFiles      = var.rippled_log_max_files
       WalletDbS3Bucket = aws_s3_bucket.wallet_db.id
