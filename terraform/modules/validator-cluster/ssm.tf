@@ -89,7 +89,7 @@ resource "aws_ssm_maintenance_window_task" "patch" {
 
       parameter {
         name   = "RebootOption"
-        values = ["RebootIfNeeded"]
+        values = ["NoReboot"]
       }
 
       cloudwatch_config {
