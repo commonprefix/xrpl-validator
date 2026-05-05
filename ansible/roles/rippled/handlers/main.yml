@@ -2,3 +2,4 @@
   ansible.builtin.systemd:
     name: rippled
     state: restarted
+  when: rippled_restart | default(true) | bool

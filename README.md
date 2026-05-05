@@ -425,6 +425,9 @@ ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l env_myenv
 # Run on specific instance
 ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l name_myenv_node_1
 
+# Apply config changes without restarting rippled
+ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l name_myenv_node_1 -e rippled_restart=false
+
 # Restart rippled everywhere
 ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
 
