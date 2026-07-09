@@ -20,11 +20,11 @@ restore() {
     if aws s3api head-object --bucket "${S3_BUCKET}" --key "${S3_KEY}" --region "${REGION}" 2>/dev/null; then
         log "Found wallet.db in S3, downloading..."
         aws s3 cp "${S3_URI}" "${WALLET_DB_PATH}" --region "${REGION}"
-        chown rippled:rippled "${WALLET_DB_PATH}"
+        chown xrpld:xrpld "${WALLET_DB_PATH}"
         chmod 600 "${WALLET_DB_PATH}"
         log "Restored wallet.db from S3"
     else
-        log "No wallet.db found in S3, will be created by rippled"
+        log "No wallet.db found in S3, will be created by xrpld"
     fi
 }
 

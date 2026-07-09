@@ -40,6 +40,10 @@ variable "nodes" {
     }), null)
     domain         = optional(string, null) # Domain for validator verification (e.g., testnet.validator.xrpl.commonprefix.com)
     hosted_zone_id = optional(string, null) # Route53 hosted zone ID for DNS record (requires domain to be set)
+    # Fee voting (validator only). Values in drops. Leave unset to use rippled defaults.
+    reference_fee   = optional(string, "")
+    account_reserve = optional(string, "")
+    owner_reserve   = optional(string, "")
   }))
 
   validation {

@@ -50,6 +50,9 @@ resource "aws_instance" "node" {
       LedgerHistory    = each.value.ledger_history
       NodeSize         = each.value.node_size
       PeersMax         = each.value.peers_max
+      ReferenceFee     = each.value.reference_fee
+      AccountReserve   = each.value.account_reserve
+      OwnerReserve     = each.value.owner_reserve
       LogMaxSizeMB     = var.rippled_log_max_size_mb
       LogMaxFiles      = var.rippled_log_max_files
       WalletDbS3Bucket = aws_s3_bucket.wallet_db.id

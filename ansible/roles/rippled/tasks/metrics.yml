@@ -1,33 +1,33 @@
-# CloudWatch metrics for rippled
+# CloudWatch metrics for xrpld
 
-- name: Create rippled metrics script
+- name: Create xrpld metrics script
   ansible.builtin.template:
     src: rippled-metrics.sh.j2
     dest: /usr/local/bin/rippled-metrics.sh
     mode: "0755"
 
-- name: Create systemd service for rippled metrics
+- name: Create systemd service for xrpld metrics
   ansible.builtin.copy:
     dest: /etc/systemd/system/rippled-metrics.service
     mode: "0644"
     content: |
       [Unit]
-      Description=Publish rippled metrics to CloudWatch
-      After=rippled.service
+      Description=Publish xrpld metrics to CloudWatch
+      After=xrpld.service
 
       [Service]
       Type=oneshot
-      User=rippled
+      User=xrpld
       ExecStart=/usr/local/bin/rippled-metrics.sh
       TimeoutStartSec=30
 
-- name: Create systemd timer for rippled metrics
+- name: Create systemd timer for xrpld metrics
   ansible.builtin.copy:
     dest: /etc/systemd/system/rippled-metrics.timer
     mode: "0644"
     content: |
       [Unit]
-      Description=Run rippled metrics every minute
+      Description=Run xrpld metrics every minute
 
       [Timer]
       OnCalendar=*:*:00
@@ -37,11 +37,11 @@
       [Install]
       WantedBy=timers.target
 
-- name: Reload systemd daemon for rippled metrics
+- name: Reload systemd daemon for xrpld metrics
   ansible.builtin.systemd:
     daemon_reload: true
 
-- name: Enable and start rippled metrics timer
+- name: Enable and start xrpld metrics timer
   ansible.builtin.systemd:
     name: rippled-metrics.timer
     state: started

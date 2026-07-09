@@ -4,8 +4,8 @@
   ansible.builtin.file:
     path: /etc/ssl/rippled
     state: directory
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0500"
   when: "'validator' not in tags.Name"
 
@@ -27,7 +27,7 @@
       -keyout /etc/ssl/rippled/rippled.key \
       -out /etc/ssl/rippled/rippled.crt \
       -subj "/CN={{ tags.SslSubjectCN | default(tags.Name) }}/O={{ tags.SslSubjectO | default('XRPL Node') }}/C={{ tags.SslSubjectC | default('US') }}"
-    chown rippled:rippled /etc/ssl/rippled/rippled.key /etc/ssl/rippled/rippled.crt
+    chown xrpld:xrpld /etc/ssl/rippled/rippled.key /etc/ssl/rippled/rippled.crt
     chmod 400 /etc/ssl/rippled/rippled.key
     chmod 444 /etc/ssl/rippled/rippled.crt
   when: "'validator' not in tags.Name and not ssl_in_secret and not ssl_key_stat.stat.exists"
@@ -61,19 +61,19 @@
   ansible.builtin.copy:
     content: "{{ my_node_secret.ssl_key }}"
     dest: /etc/ssl/rippled/rippled.key
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0400"
   when: "'validator' not in tags.Name and ssl_in_secret"
   no_log: true
-  notify: Restart rippled
+  notify: Restart xrpld
 
 - name: Deploy SSL cert from secret
   ansible.builtin.copy:
     content: "{{ my_node_secret.ssl_cert }}"
     dest: /etc/ssl/rippled/rippled.crt
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0444"
   when: "'validator' not in tags.Name and ssl_in_secret"
-  notify: Restart rippled
+  notify: Restart xrpld

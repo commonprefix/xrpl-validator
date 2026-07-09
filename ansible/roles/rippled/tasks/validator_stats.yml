@@ -15,11 +15,11 @@
     content: |
       [Unit]
       Description=Fetch validator stats from XRPL data API
-      After=rippled.service
+      After=xrpld.service
 
       [Service]
       Type=oneshot
-      User=rippled
+      User=xrpld
       ExecStart=/usr/local/bin/validator-stats.sh
       TimeoutStartSec=60
   when: "'role_validator' in group_names"

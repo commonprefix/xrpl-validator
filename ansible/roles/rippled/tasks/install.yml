@@ -1,4 +1,4 @@
-# Install rippled from Ripple's official RPM repository
+# Install xrpld from Ripple's official RPM repository
 
 - name: Add Ripple repository
   ansible.builtin.yum_repository:
@@ -10,50 +10,64 @@
     repo_gpgcheck: true
     enabled: true
 
-- name: Install rippled
+- name: Install xrpld
   ansible.builtin.dnf:
-    name: rippled
+    name: xrpld
     state: present
     enablerepo: ripple-stable
 
-- name: Ensure /var/lib/rippled is owned by rippled
+- name: Ensure /var/lib/rippled is owned by xrpld
   ansible.builtin.file:
     path: /var/lib/rippled
     state: directory
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0755"
 
-- name: Ensure /var/lib/rippled/db is owned by rippled
+- name: Ensure /var/lib/rippled/db is owned by xrpld
   ansible.builtin.file:
     path: /var/lib/rippled/db
     state: directory
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0755"
 
-- name: Swap owned by root rippled
+# In-place migration sentinel: data preserved from the old rippled package is still
+# owned by the rippled user (partly 0600) and crashes xrpld on startup. A recursive
+# chown on every run would walk the whole ledger store, so only fix when the sentinel
+# file has a foreign owner.
+- name: Check ownership of preserved wallet.db (migration sentinel)
+  ansible.builtin.stat:
+    path: /var/lib/rippled/db/wallet.db
+  register: rippled_wallet_db_stat
+
+- name: Recursively fix ownership of preserved data (one-time after rippled migration)
+  ansible.builtin.command: chown -R xrpld:xrpld /var/lib/rippled /var/log/rippled
+  when: rippled_wallet_db_stat.stat.exists and rippled_wallet_db_stat.stat.pw_name != 'xrpld'
+  changed_when: true
+
+- name: Ensure swapfile is owned by root
   ansible.builtin.file:
     path: /var/lib/rippled/swapfile
     owner: root
     group: root
 
-- name: Backup original rippled.cfg
+- name: Backup original xrpld.cfg
   ansible.builtin.copy:
-    src: /etc/opt/ripple/rippled.cfg
-    dest: /etc/opt/ripple/rippled.cfg.original
+    src: /etc/xrpld/xrpld.cfg
+    dest: /etc/xrpld/xrpld.cfg.original
     remote_src: true
     force: false
 
-- name: Ensure rippled log directory exists
+- name: Ensure xrpld log directory exists
   ansible.builtin.file:
     path: /var/log/rippled
     state: directory
-    owner: rippled
-    group: rippled
+    owner: xrpld
+    group: xrpld
     mode: "0755"
 
-- name: Configure logrotate for rippled
+- name: Configure logrotate for xrpld
   ansible.builtin.copy:
     dest: /etc/logrotate.d/rippled
     mode: "0644"

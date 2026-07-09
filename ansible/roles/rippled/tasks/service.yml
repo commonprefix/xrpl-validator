@@ -1,20 +1,14 @@
-- name: Enable and start rippled
+- name: Enable and start xrpld
   ansible.builtin.systemd:
-    name: rippled
+    name: xrpld
     state: started
     enabled: true
 
-- name: Copy update-rippled.sh to /usr/local/bin/update-rippled-aws
+# The xrpld package ships no update script (unlike old rippled) - deploy our own
+- name: Deploy update-xrpld-aws helper script
   ansible.builtin.copy:
-    src: /opt/ripple/bin/update-rippled.sh
-    dest: /usr/local/bin/update-rippled-aws
-    remote_src: true
+    src: update-xrpld-aws.sh
+    dest: /usr/local/bin/update-xrpld-aws
     owner: root
     group: root
     mode: "0755"
-
-- name: Patch update-rippled-aws to support Amazon Linux
-  ansible.builtin.replace:
-    path: /usr/local/bin/update-rippled-aws
-    regexp: '^\s*elif \[\[ "\$ID" == "fedora"'
-    replace: 'elif [[ "$ID" == "fedora" || "$ID_LIKE" == "fedora"'

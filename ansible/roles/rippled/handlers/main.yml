@@ -1,5 +1,5 @@
-- name: Restart rippled
+- name: Restart xrpld
   ansible.builtin.systemd:
-    name: rippled
+    name: xrpld
     state: restarted
   when: rippled_restart | default(true) | bool

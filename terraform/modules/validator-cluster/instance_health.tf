@@ -56,6 +56,17 @@ data "aws_iam_policy_document" "alerts_topic" {
     }
     resources = [aws_sns_topic.alerts.arn]
   }
+
+  statement {
+    sid     = "AllowCloudWatchAlarmsPublish"
+    effect  = "Allow"
+    actions = ["sns:Publish"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    resources = [aws_sns_topic.alerts.arn]
+  }
 }
 
 resource "aws_sns_topic_policy" "alerts_eventbridge" {

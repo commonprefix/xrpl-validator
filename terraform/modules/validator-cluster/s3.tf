@@ -19,6 +19,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "wallet_db" {
   bucket = aws_s3_bucket.wallet_db.id
 
   rule {
+    # Preserve AWS's default SSE-C block (ransomware protection)
+    blocked_encryption_types = ["SSE-C"]
+
     apply_server_side_encryption_by_default {
       sse_algorithm = "AES256"
     }

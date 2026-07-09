@@ -114,5 +114,5 @@
     state: mounted
   when: nvme_device.stat.exists and already_mounted.rc != 0
 
-# Note: ownership will be set by rippled role after package is installed
-# since rippled user doesn't exist yet at this point
+# Note: ownership will be set by the rippled role after the xrpld package is installed
+# since the xrpld user doesn't exist yet at this point

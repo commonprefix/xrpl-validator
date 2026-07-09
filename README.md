@@ -254,7 +254,7 @@ ansible-playbook playbooks/site.yml -l name_myenv_validator
 The validator will now participate in consensus. You can verify with:
 
 ```bash
-rippled server_info | grep server_state
+xrpld server_info | grep server_state
 ```
 
 
@@ -311,7 +311,7 @@ Each node requires two secrets in AWS Secrets Manager. You can either:
 - **Pre-create them** before running Ansible (e.g., when migrating an existing validator)
 - **Let Ansible create them** automatically on first run
 
-If the secrets don't exist or are empty, Ansible runs `rippled validation_create` to generate new keys and populates both secrets.
+If the secrets don't exist or are empty, Ansible runs `xrpld validation_create` to generate new keys and populates both secrets.
 
 #### Secret Structure
 
@@ -368,9 +368,9 @@ When Ansible runs, it will detect these existing secrets and use them instead of
 
 ### wallet.db Persistence
 
-`rippled` stores node identity in `wallet.db`. Since NVMe storage is ephemeral, systemd services handle backup/restore:
+`xrpld` stores node identity in `wallet.db`. Since NVMe storage is ephemeral, systemd services handle backup/restore:
 
-- **On boot**: Restores wallet.db from S3 before `rippled` starts
+- **On boot**: Restores wallet.db from S3 before `xrpld` starts
 - **Hourly**: Backs up wallet.db to S3
 - **On stop**: Backs up wallet.db before shutdown
 
@@ -399,17 +399,21 @@ aws ssm start-session --region <region> --target <instance-id>
 3. Configure new node: `ansible-playbook playbooks/site.yml -l name_myenv_node_X`
 4. Update cluster config on all nodes: `ansible-playbook playbooks/site.yml -l env_myenv`
 
-## Upgrading rippled
+## Upgrading xrpld
+
+xrpld ships no auto-update script (the old `update-rippled.sh` mechanism was dropped in
+3.2.0), so Ansible deploys our own update helper:
 
 ```bash
 # Connect to instance
 aws ssm start-session --region <region> --target <instance-id>
 
-# Run upgrade
-sudo /usr/local/bin/update-rippled-aws
+# Run upgrade (checks repo, updates + restarts only if a new version exists,
+# verifies the service comes back; logs to /var/log/rippled/update.log)
+sudo /usr/local/bin/update-xrpld-aws
 
 # Verify
-rippled server_info | grep build_version
+sudo xrpld server_info | grep build_version
 ```
 
 For rolling upgrades: upgrade nodes first (wait for `full` state), then validator last.
@@ -425,14 +429,14 @@ ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l env_myenv
 # Run on specific instance
 ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l name_myenv_node_1
 
-# Apply config changes without restarting rippled
+# Apply config changes without restarting xrpld
 ansible-playbook ../xrpl-validator/ansible/playbooks/site.yml -l name_myenv_node_1 -e rippled_restart=false
 
-# Restart rippled everywhere
-ansible env_myenv -m systemd -a "name=rippled state=restarted" --become
+# Restart xrpld everywhere
+ansible env_myenv -m systemd -a "name=xrpld state=restarted" --become
 
 # Check server state
-ansible env_myenv -m shell -a "rippled server_info | jq .result.info.server_state" --become
+ansible env_myenv -m shell -a "xrpld server_info | jq .result.info.server_state" --become
 
 # List available hosts
 ansible-inventory --graph

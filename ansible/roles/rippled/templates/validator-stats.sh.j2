@@ -5,10 +5,10 @@
 INSTANCE_ID=$(/usr/bin/ec2-metadata -i | cut -d' ' -f2)
 REGION=$(/usr/bin/ec2-metadata -z | cut -d' ' -f2 | sed 's/.$//')
 
-# Get validator's master public key from rippled
-SERVER_INFO=$(timeout 5 /opt/ripple/bin/rippled server_info 2>/dev/null)
+# Get validator's master public key from xrpld
+SERVER_INFO=$(timeout 5 /usr/bin/xrpld server_info 2>/dev/null)
 if [ $? -ne 0 ] || [ -z "$SERVER_INFO" ]; then
-  echo "Failed to get server_info from rippled"
+  echo "Failed to get server_info from xrpld"
   exit 1
 fi
 

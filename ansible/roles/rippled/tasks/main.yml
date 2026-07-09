@@ -1,6 +1,6 @@
-# Install and configure rippled from Ripple's official RPM repository
+# Install and configure xrpld from Ripple's official RPM repository
 
-- name: Install rippled
+- name: Install xrpld
   ansible.builtin.include_tasks: install.yml
 
 - name: Manage secrets
@@ -15,7 +15,7 @@
 - name: Setup wallet.db S3 sync
   ansible.builtin.include_tasks: wallet_db.yml
 
-- name: Start rippled service
+- name: Start xrpld service
   ansible.builtin.include_tasks: service.yml
 
 - name: Setup CloudWatch metrics
@@ -25,10 +25,10 @@
   ansible.builtin.include_tasks: validator_stats.yml
 
 # =============================================================================
-# Backup wallet.db to S3 after rippled creates it (must run after rippled is setup)
+# Backup wallet.db to S3 after xrpld creates it (must run after xrpld is setup)
 # =============================================================================
 
-- name: Wait for wallet.db to be created by rippled
+- name: Wait for wallet.db to be created by xrpld
   ansible.builtin.wait_for:
     path: /var/lib/rippled/db/wallet.db
     timeout: 60

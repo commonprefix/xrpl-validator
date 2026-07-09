@@ -6,15 +6,15 @@
     dest: /usr/local/bin/wallet-db-sync.sh
     mode: "0755"
 
-- name: Create systemd service for wallet.db restore (runs before rippled)
+- name: Create systemd service for wallet.db restore (runs before xrpld)
   ansible.builtin.copy:
     dest: /etc/systemd/system/wallet-db-restore.service
     mode: "0644"
     content: |
       [Unit]
-      Description=Restore wallet.db from S3 before rippled starts
+      Description=Restore wallet.db from S3 before xrpld starts
       After=local-fs.target
-      Before=rippled.service
+      Before=xrpld.service
       ConditionPathIsMountPoint=/var/lib/rippled
 
       [Service]
@@ -23,7 +23,7 @@
       RemainAfterExit=yes
 
       [Install]
-      WantedBy=rippled.service
+      WantedBy=xrpld.service
 
 - name: Create systemd service for wallet.db backup
   ansible.builtin.copy:
@@ -54,15 +54,15 @@
       [Install]
       WantedBy=timers.target
 
-- name: Create systemd service for wallet.db backup on rippled stop
+- name: Create systemd service for wallet.db backup on xrpld stop
   ansible.builtin.copy:
     dest: /etc/systemd/system/wallet-db-backup-on-stop.service
     mode: "0644"
     content: |
       [Unit]
-      Description=Backup wallet.db to S3 when rippled stops
-      After=rippled.service
-      BindsTo=rippled.service
+      Description=Backup wallet.db to S3 when xrpld stops
+      After=xrpld.service
+      BindsTo=xrpld.service
       ConditionPathExists=/var/lib/rippled/db/wallet.db
 
       [Service]
@@ -71,7 +71,7 @@
       ExecStop=/usr/local/bin/wallet-db-sync.sh backup
 
       [Install]
-      WantedBy=rippled.service
+      WantedBy=xrpld.service
 
 - name: Reload systemd daemon for wallet-db services
   ansible.builtin.systemd:

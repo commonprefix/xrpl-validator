@@ -114,3 +114,16 @@ minimum_txn_in_ledger_standalone=1000
 
 [ledger_history]
 {{ rippled_ledger_history | default(256) }}
+{% if rippled_reference_fee or rippled_account_reserve or rippled_owner_reserve %}
+
+[voting]
+{% if rippled_reference_fee %}
+reference_fee = {{ rippled_reference_fee }}
+{% endif %}
+{% if rippled_account_reserve %}
+account_reserve = {{ rippled_account_reserve }}
+{% endif %}
+{% if rippled_owner_reserve %}
+owner_reserve = {{ rippled_owner_reserve }}
+{% endif %}
+{% endif %}
