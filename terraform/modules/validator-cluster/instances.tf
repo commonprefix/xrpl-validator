@@ -1,6 +1,9 @@
 # EC2 Instances
 
 data "aws_ami" "amazon_linux" {
+  for_each = local.regions
+
+  region      = each.key
   most_recent = true
   owners      = ["amazon"]
 
@@ -14,18 +17,19 @@ data "aws_ami" "amazon_linux" {
 resource "aws_instance" "node" {
   for_each = local.nodes_by_name
 
-  ami           = data.aws_ami.amazon_linux.id
+  region        = local.node_region[each.key]
+  ami           = data.aws_ami.amazon_linux[local.node_region[each.key]].id
   instance_type = each.value.instance_type
 
   # Validator goes in validator subnet, public nodes in public subnets, private nodes in private subnets
   subnet_id = (
     each.value.validator ? aws_subnet.validator.id :
-    each.value.public ? module.vpc.public_subnets[each.value.availability_zone % length(module.vpc.public_subnets)] :
-    aws_subnet.node[each.value.availability_zone % length(aws_subnet.node)].id
+    each.value.public ? module.vpc[local.node_region[each.key]].public_subnets[each.value.availability_zone % length(module.vpc[local.node_region[each.key]].public_subnets)] :
+    aws_subnet.node["${local.node_region[each.key]}-${each.value.availability_zone % length(local.regions[local.node_region[each.key]].availability_zones)}"].id
   )
 
   # Validator uses validator security group, others use node security group
-  vpc_security_group_ids = [each.value.validator ? aws_security_group.validator.id : aws_security_group.node.id]
+  vpc_security_group_ids = [each.value.validator ? aws_security_group.validator.id : aws_security_group.node[local.node_region[each.key]].id]
 
   iam_instance_profile        = aws_iam_instance_profile.node[each.key].name
   monitoring                  = true
@@ -55,7 +59,7 @@ resource "aws_instance" "node" {
       OwnerReserve     = each.value.owner_reserve
       LogMaxSizeMB     = var.rippled_log_max_size_mb
       LogMaxFiles      = var.rippled_log_max_files
-      WalletDbS3Bucket = aws_s3_bucket.wallet_db.id
+      WalletDbS3Bucket = aws_s3_bucket.wallet_db[local.node_region[each.key]].id
     },
     # SSL tags only for non-validators
     each.value.validator ? {} : {

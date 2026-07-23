@@ -3,11 +3,26 @@
 
 locals {
   discord_enabled = var.discord_webhook_secret_name != null
+  # Regions to run the forwarder in (SNS can only invoke a same-region Lambda).
+  # The webhook secret must exist in every region (Secrets Manager replica).
+  discord_regions = local.discord_enabled ? local.regions : {}
 }
 
+# Only the primary region's secret is looked up (it always exists); replicas in
+# other regions may not exist at plan time, so their policy ARNs are constructed
+# with a wildcard suffix instead.
 data "aws_secretsmanager_secret" "discord_webhook" {
-  count = local.discord_enabled ? 1 : 0
-  name  = var.discord_webhook_secret_name
+  for_each = local.discord_enabled ? { (var.region) = true } : {}
+
+  region = each.key
+  name   = var.discord_webhook_secret_name
+}
+
+locals {
+  discord_secret_arns = local.discord_enabled ? concat(
+    [data.aws_secretsmanager_secret.discord_webhook[var.region].arn],
+    [for r in sort(keys(local.discord_regions)) : "arn:aws:secretsmanager:${r}:${data.aws_caller_identity.current.account_id}:secret:${var.discord_webhook_secret_name}-*" if r != var.region]
+  ) : []
 }
 
 # Lambda function code
@@ -137,7 +152,9 @@ resource "aws_iam_role_policy" "discord_lambda" {
   name  = "discord-lambda-policy"
   role  = aws_iam_role.discord_lambda[0].id
 
-  policy = jsonencode({
+  # Two jsonencode branches so the single-region rendering stays byte-identical
+  # (Resource as a plain string) while multi-region gets a list of replica ARNs.
+  policy = length(local.discord_secret_arns) == 1 ? jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -154,15 +171,36 @@ resource "aws_iam_role_policy" "discord_lambda" {
         Action = [
           "secretsmanager:GetSecretValue"
         ]
-        Resource = data.aws_secretsmanager_secret.discord_webhook[0].arn
+        Resource = local.discord_secret_arns[0]
+      }
+    ]
+    }) : jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = local.discord_secret_arns
       }
     ]
   })
 }
 
-# Lambda function
+# Lambda function (one per region — SNS can only invoke a same-region Lambda)
 resource "aws_lambda_function" "discord_forwarder" {
-  count            = local.discord_enabled ? 1 : 0
+  for_each         = local.discord_regions
+  region           = each.key
   filename         = data.archive_file.discord_lambda[0].output_path
   source_code_hash = data.archive_file.discord_lambda[0].output_base64sha256
   function_name    = "${var.environment}-sns-to-discord"
@@ -173,7 +211,7 @@ resource "aws_lambda_function" "discord_forwarder" {
 
   environment {
     variables = {
-      SECRET_NAME = data.aws_secretsmanager_secret.discord_webhook[0].name
+      SECRET_NAME = var.discord_webhook_secret_name
     }
   }
 
@@ -184,34 +222,65 @@ resource "aws_lambda_function" "discord_forwarder" {
 
 # Allow SNS to invoke Lambda
 resource "aws_lambda_permission" "sns_alerts" {
-  count         = local.discord_enabled ? 1 : 0
+  for_each      = local.discord_regions
+  region        = each.key
   statement_id  = "AllowSNSAlerts"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.discord_forwarder[0].function_name
+  function_name = aws_lambda_function.discord_forwarder[each.key].function_name
   principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.alerts.arn
+  source_arn    = aws_sns_topic.alerts[each.key].arn
 }
 
 resource "aws_lambda_permission" "sns_reboot" {
-  count         = local.discord_enabled ? 1 : 0
+  for_each      = local.discord_regions
+  region        = each.key
   statement_id  = "AllowSNSReboot"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.discord_forwarder[0].function_name
+  function_name = aws_lambda_function.discord_forwarder[each.key].function_name
   principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.reboot_required.arn
+  source_arn    = aws_sns_topic.reboot_required[each.key].arn
 }
 
 # Subscribe Lambda to SNS topics
 resource "aws_sns_topic_subscription" "alerts_to_discord" {
-  count     = local.discord_enabled ? 1 : 0
-  topic_arn = aws_sns_topic.alerts.arn
+  for_each  = local.discord_regions
+  region    = each.key
+  topic_arn = aws_sns_topic.alerts[each.key].arn
   protocol  = "lambda"
-  endpoint  = aws_lambda_function.discord_forwarder[0].arn
+  endpoint  = aws_lambda_function.discord_forwarder[each.key].arn
 }
 
 resource "aws_sns_topic_subscription" "reboot_to_discord" {
-  count     = local.discord_enabled ? 1 : 0
-  topic_arn = aws_sns_topic.reboot_required.arn
+  for_each  = local.discord_regions
+  region    = each.key
+  topic_arn = aws_sns_topic.reboot_required[each.key].arn
   protocol  = "lambda"
-  endpoint  = aws_lambda_function.discord_forwarder[0].arn
+  endpoint  = aws_lambda_function.discord_forwarder[each.key].arn
+}
+
+# Migration artifacts: both existing stacks are single-region ap-south-1;
+# remove once all stacks have applied the for_each changes.
+moved {
+  from = aws_lambda_function.discord_forwarder[0]
+  to   = aws_lambda_function.discord_forwarder["ap-south-1"]
+}
+
+moved {
+  from = aws_lambda_permission.sns_alerts[0]
+  to   = aws_lambda_permission.sns_alerts["ap-south-1"]
+}
+
+moved {
+  from = aws_lambda_permission.sns_reboot[0]
+  to   = aws_lambda_permission.sns_reboot["ap-south-1"]
+}
+
+moved {
+  from = aws_sns_topic_subscription.alerts_to_discord[0]
+  to   = aws_sns_topic_subscription.alerts_to_discord["ap-south-1"]
+}
+
+moved {
+  from = aws_sns_topic_subscription.reboot_to_discord[0]
+  to   = aws_sns_topic_subscription.reboot_to_discord["ap-south-1"]
 }

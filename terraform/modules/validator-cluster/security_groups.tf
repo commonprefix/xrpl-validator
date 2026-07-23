@@ -1,7 +1,10 @@
 resource "aws_security_group" "node" {
+  for_each = local.regions
+
+  region      = each.key
   name        = "${var.environment}-node"
   description = "Security group for XRPL node servers"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = module.vpc[each.key].vpc_id
 
   ingress {
     description = "XRPL peer protocol from internet"
@@ -74,9 +77,10 @@ resource "aws_security_group" "node" {
 }
 
 resource "aws_security_group" "validator" {
+  region      = local.validator_region
   name        = "${var.environment}-validator-v2"
   description = "Security group for private XRPL validator"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = module.vpc[local.validator_region].vpc_id
 
   # Ingress rules
   ingress {
@@ -84,7 +88,30 @@ resource "aws_security_group" "validator" {
     from_port       = 51235
     to_port         = 51235
     protocol        = "tcp"
-    security_groups = [aws_security_group.node.id]
+    security_groups = [aws_security_group.node[local.validator_region].id]
+  }
+
+  # Cross-region cluster nodes can't be referenced by SG over peering — allow by CIDR
+  dynamic "ingress" {
+    for_each = local.peer_region_cidrs[local.validator_region]
+    content {
+      description = "XRPL peer protocol from ${ingress.key} nodes"
+      from_port   = 51235
+      to_port     = 51235
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  dynamic "egress" {
+    for_each = local.peer_region_cidrs[local.validator_region]
+    content {
+      description = "XRPL peer protocol to ${egress.key} nodes"
+      from_port   = 51235
+      to_port     = 51235
+      protocol    = "tcp"
+      cidr_blocks = [egress.value]
+    }
   }
 
   egress {
@@ -124,11 +151,18 @@ resource "aws_security_group" "validator" {
     from_port       = 51235
     to_port         = 51235
     protocol        = "tcp"
-    security_groups = [aws_security_group.node.id]
+    security_groups = [aws_security_group.node[local.validator_region].id]
   }
 
   tags = {
     Name        = "${var.environment}-validator"
     Environment = var.environment
   }
+}
+
+# Migration artifact: both existing stacks are single-region ap-south-1;
+# remove once all stacks have applied the for_each change.
+moved {
+  from = aws_security_group.node
+  to   = aws_security_group.node["ap-south-1"]
 }

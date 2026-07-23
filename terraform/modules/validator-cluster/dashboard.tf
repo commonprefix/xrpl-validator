@@ -1,5 +1,17 @@
 locals {
-  all_instances = { for name, instance in aws_instance.node : name => instance.id }
+  all_instances = { for name, instance in aws_instance.node : name => {
+    id     = instance.id
+    region = local.node_region[name]
+  } }
+
+  # Non-primary regions get their own Server Info log widget (Logs Insights
+  # widgets are the only single-region widget type; metric widgets take a
+  # per-metric region override instead)
+  extra_dashboard_regions = [for r in sort(keys(local.regions)) : r if r != var.region]
+
+  # Extra Server Info widgets sit directly under the primary one; everything
+  # below shifts down accordingly (0 for single-region stacks)
+  dashboard_y_offset = 6 * length(local.extra_dashboard_regions)
 }
 
 resource "aws_cloudwatch_dashboard" "rippled" {
@@ -44,20 +56,36 @@ resource "aws_cloudwatch_dashboard" "rippled" {
           }
         }
       ],
+      # Server Info from Logs for non-primary regions, stacked below the primary
+      # (log widgets are single-region)
+      [
+        for i, r in local.extra_dashboard_regions : {
+          type   = "log"
+          x      = 0
+          y      = 10 + 6 * i
+          width  = 24
+          height = 6
+          properties = {
+            title  = "Server Info (Latest) - ${r}"
+            region = r
+            query  = "SOURCE '/rippled/${var.environment}/server-info' | fields @timestamp, instance_id, public_ip, build_version, server_state, pubkey_node, pubkey_validator, complete_ledgers, ledger_hash | sort @timestamp desc | dedup instance_id"
+          }
+        }
+      ],
       # Server State and Uptime
       [
         {
           type   = "metric"
           x      = 0
-          y      = 9
+          y      = 9 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Server State (5=proposing, 4=full)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_server_state", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_server_state", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -67,15 +95,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 9
+          y      = 9 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Uptime (hours)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_uptime", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_uptime", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -88,15 +116,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 15
+          y      = 15 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Peer Count"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_peers", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_peers", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -106,15 +134,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 15
+          y      = 15 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Cluster Count"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_cluster_count", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_cluster_count", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -127,15 +155,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 21
+          y      = 21 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Ledger Age (seconds)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_ledger_age", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_ledger_age", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -145,15 +173,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 21
+          y      = 21 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Ledger Sequence"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_ledger_seq", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_ledger_seq", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -167,15 +195,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 27
+          y      = 27 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Last Close Converge Time (seconds)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_last_close_converge_time", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_last_close_converge_time", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -185,15 +213,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 27
+          y      = 27 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Last Close Proposers"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_last_close_proposers", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_last_close_proposers", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -206,15 +234,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 33
+          y      = 33 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Load Factor"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_load_factor", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_load_factor", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -224,15 +252,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 33
+          y      = 33 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "IO Latency (ms)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_io_latency_ms", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_io_latency_ms", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -245,15 +273,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 39
+          y      = 39 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "CPU Utilization %"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "AWS/EC2", "CPUUtilization", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "AWS/EC2", "CPUUtilization", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -263,15 +291,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 39
+          y      = 39 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Memory Used %"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "CWAgent", "mem_used_percent", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "CWAgent", "mem_used_percent", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -284,15 +312,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 45
+          y      = 45 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Network In (bytes)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "AWS/EC2", "NetworkIn", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "AWS/EC2", "NetworkIn", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -302,15 +330,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 45
+          y      = 45 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Network Out (bytes)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "AWS/EC2", "NetworkOut", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "AWS/EC2", "NetworkOut", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -323,15 +351,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 51
+          y      = 51 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Disk Used % (NVMe /var/lib/rippled)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "CWAgent", "disk_used_percent", "InstanceId", id, "path", "/var/lib/rippled", "device", "nvme1n1", "fstype", "xfs", { label = name }
+              for name, node in local.all_instances : [
+                "CWAgent", "disk_used_percent", "InstanceId", node.id, "path", "/var/lib/rippled", "device", "nvme1n1", "fstype", "xfs", merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -341,15 +369,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 51
+          y      = 51 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Disk Used % (root /)"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "CWAgent", "disk_used_percent", "InstanceId", id, "path", "/", "device", "nvme0n1p1", "fstype", "xfs", { label = name }
+              for name, node in local.all_instances : [
+                "CWAgent", "disk_used_percent", "InstanceId", node.id, "path", "/", "device", "nvme0n1p1", "fstype", "xfs", merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -362,15 +390,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 57
+          y      = 57 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Swap Used %"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "CWAgent", "swap_used_percent", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "CWAgent", "swap_used_percent", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -380,15 +408,15 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 57
+          y      = 57 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
             title  = "Peer Disconnects"
             region = var.region
             metrics = [
-              for name, id in local.all_instances : [
-                "rippled", "rippled_peer_disconnects", "InstanceId", id, { label = name }
+              for name, node in local.all_instances : [
+                "rippled", "rippled_peer_disconnects", "InstanceId", node.id, merge({ label = name }, node.region != var.region ? { region = node.region } : {})
               ]
             ]
             stat   = "Average"
@@ -401,7 +429,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 0
-          y      = 63
+          y      = 63 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
@@ -419,7 +447,7 @@ resource "aws_cloudwatch_dashboard" "rippled" {
         {
           type   = "metric"
           x      = 12
-          y      = 63
+          y      = 63 + local.dashboard_y_offset
           width  = 12
           height = 6
           properties = {
@@ -445,6 +473,9 @@ resource "aws_cloudwatch_dashboard" "rippled" {
 }
 
 resource "aws_cloudwatch_log_group" "rippled_server_info" {
+  for_each = local.regions
+
+  region            = each.key
   name              = "/rippled/${var.environment}/server-info"
   retention_in_days = var.log_retention_days
 
@@ -455,6 +486,14 @@ resource "aws_cloudwatch_log_group" "rippled_server_info" {
 
 resource "aws_cloudwatch_log_stream" "rippled" {
   for_each       = aws_instance.node
+  region         = local.node_region[each.key]
   name           = each.value.id
-  log_group_name = aws_cloudwatch_log_group.rippled_server_info.name
+  log_group_name = aws_cloudwatch_log_group.rippled_server_info[local.node_region[each.key]].name
+}
+
+# Migration artifact: both existing stacks are single-region ap-south-1;
+# remove once all stacks have applied the for_each change.
+moved {
+  from = aws_cloudwatch_log_group.rippled_server_info
+  to   = aws_cloudwatch_log_group.rippled_server_info["ap-south-1"]
 }

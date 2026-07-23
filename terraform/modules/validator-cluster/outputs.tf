@@ -1,6 +1,6 @@
 output "vpc_id" {
   description = "ID of the VPC"
-  value       = module.vpc.vpc_id
+  value       = module.vpc[var.region].vpc_id
 }
 
 output "nodes" {
@@ -16,7 +16,7 @@ output "nodes" {
 
 output "sns_topic_arn" {
   description = "ARN of the SNS topic for alerts"
-  value       = aws_sns_topic.alerts.arn
+  value       = aws_sns_topic.alerts[var.region].arn
 }
 
 output "ansible_role_arn" {
@@ -26,7 +26,7 @@ output "ansible_role_arn" {
 
 output "ansible_ssm_bucket" {
   description = "Name of the S3 bucket for Ansible SSM sessions"
-  value       = length(aws_s3_bucket.ansible_ssm) > 0 ? aws_s3_bucket.ansible_ssm[0].id : null
+  value       = length(aws_s3_bucket.ansible_ssm) > 0 ? aws_s3_bucket.ansible_ssm[var.region].id : null
 }
 
 output "domain_verification_bucket" {

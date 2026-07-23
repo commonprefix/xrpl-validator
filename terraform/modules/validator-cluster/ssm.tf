@@ -1,6 +1,9 @@
-# SSM Patch Manager Resources
+# SSM Patch Manager Resources (per region)
 
 resource "aws_ssm_patch_baseline" "this" {
+  for_each = local.regions
+
+  region           = each.key
   name             = "${var.environment}-patch-baseline"
   operating_system = "AMAZON_LINUX_2023"
 
@@ -40,13 +43,19 @@ resource "aws_ssm_patch_baseline" "this" {
 }
 
 resource "aws_ssm_patch_group" "this" {
-  baseline_id = aws_ssm_patch_baseline.this.id
+  for_each = local.regions
+
+  region      = each.key
+  baseline_id = aws_ssm_patch_baseline.this[each.key].id
   patch_group = var.environment
 }
 
 resource "aws_ssm_maintenance_window" "patch" {
+  for_each = local.regions
+
+  region            = each.key
   name              = "${var.environment}-patch-window"
-  schedule          = var.patch_schedule
+  schedule          = coalesce(each.value.patch_schedule, var.patch_schedule)
   duration          = 2
   cutoff            = 1
   schedule_timezone = "UTC"
@@ -57,7 +66,10 @@ resource "aws_ssm_maintenance_window" "patch" {
 }
 
 resource "aws_ssm_maintenance_window_target" "patch" {
-  window_id     = aws_ssm_maintenance_window.patch.id
+  for_each = local.regions
+
+  region        = each.key
+  window_id     = aws_ssm_maintenance_window.patch[each.key].id
   name          = "${var.environment}-patch-targets"
   resource_type = "INSTANCE"
 
@@ -68,7 +80,10 @@ resource "aws_ssm_maintenance_window_target" "patch" {
 }
 
 resource "aws_ssm_maintenance_window_task" "patch" {
-  window_id        = aws_ssm_maintenance_window.patch.id
+  for_each = local.regions
+
+  region           = each.key
+  window_id        = aws_ssm_maintenance_window.patch[each.key].id
   task_type        = "RUN_COMMAND"
   task_arn         = "AWS-RunPatchBaseline"
   priority         = 1
@@ -77,7 +92,7 @@ resource "aws_ssm_maintenance_window_task" "patch" {
 
   targets {
     key    = "WindowTargetIds"
-    values = [aws_ssm_maintenance_window_target.patch.id]
+    values = [aws_ssm_maintenance_window_target.patch[each.key].id]
   }
 
   task_invocation_parameters {
@@ -93,7 +108,7 @@ resource "aws_ssm_maintenance_window_task" "patch" {
       }
 
       cloudwatch_config {
-        cloudwatch_log_group_name = aws_cloudwatch_log_group.patch.name
+        cloudwatch_log_group_name = aws_cloudwatch_log_group.patch[each.key].name
         cloudwatch_output_enabled = true
       }
     }
@@ -101,6 +116,9 @@ resource "aws_ssm_maintenance_window_task" "patch" {
 }
 
 resource "aws_cloudwatch_log_group" "patch" {
+  for_each = local.regions
+
+  region            = each.key
   name              = "/aws/ssm/${var.environment}/patch-manager"
   retention_in_days = var.log_retention_days
 
@@ -110,8 +128,11 @@ resource "aws_cloudwatch_log_group" "patch" {
 }
 
 resource "aws_ssm_parameter" "cloudwatch_agent_config" {
-  name = "AmazonCloudWatch-${var.environment}"
-  type = "String"
+  for_each = local.regions
+
+  region = each.key
+  name   = "AmazonCloudWatch-${var.environment}"
+  type   = "String"
   value = jsonencode({
     agent = {
       metrics_collection_interval = 60
@@ -179,6 +200,9 @@ resource "aws_ssm_parameter" "cloudwatch_agent_config" {
 }
 
 resource "aws_cloudwatch_log_group" "messages" {
+  for_each = local.regions
+
+  region            = each.key
   name              = "/aws/ec2/${var.environment}/messages"
   retention_in_days = var.log_retention_days
 
@@ -188,10 +212,60 @@ resource "aws_cloudwatch_log_group" "messages" {
 }
 
 resource "aws_cloudwatch_log_group" "secure" {
+  for_each = local.regions
+
+  region            = each.key
   name              = "/aws/ec2/${var.environment}/secure"
   retention_in_days = var.log_retention_days
 
   tags = {
     Environment = var.environment
   }
+}
+
+# Migration artifacts: both existing stacks are single-region ap-south-1;
+# remove once all stacks have applied the for_each changes.
+moved {
+  from = aws_ssm_patch_baseline.this
+  to   = aws_ssm_patch_baseline.this["ap-south-1"]
+}
+
+moved {
+  from = aws_ssm_patch_group.this
+  to   = aws_ssm_patch_group.this["ap-south-1"]
+}
+
+moved {
+  from = aws_ssm_maintenance_window.patch
+  to   = aws_ssm_maintenance_window.patch["ap-south-1"]
+}
+
+moved {
+  from = aws_ssm_maintenance_window_target.patch
+  to   = aws_ssm_maintenance_window_target.patch["ap-south-1"]
+}
+
+moved {
+  from = aws_ssm_maintenance_window_task.patch
+  to   = aws_ssm_maintenance_window_task.patch["ap-south-1"]
+}
+
+moved {
+  from = aws_cloudwatch_log_group.patch
+  to   = aws_cloudwatch_log_group.patch["ap-south-1"]
+}
+
+moved {
+  from = aws_ssm_parameter.cloudwatch_agent_config
+  to   = aws_ssm_parameter.cloudwatch_agent_config["ap-south-1"]
+}
+
+moved {
+  from = aws_cloudwatch_log_group.messages
+  to   = aws_cloudwatch_log_group.messages["ap-south-1"]
+}
+
+moved {
+  from = aws_cloudwatch_log_group.secure
+  to   = aws_cloudwatch_log_group.secure["ap-south-1"]
 }

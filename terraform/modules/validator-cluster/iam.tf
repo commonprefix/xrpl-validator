@@ -61,7 +61,7 @@ resource "aws_iam_role_policy" "node_secrets" {
           "secretsmanager:PutSecretValue"
         ]
         Resource = [
-          "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${each.value.secret_name}-*"
+          "arn:aws:secretsmanager:${local.node_region[each.key]}:${data.aws_caller_identity.current.account_id}:secret:${each.value.secret_name}-*"
         ]
       },
       {
@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "node_secrets" {
           "secretsmanager:PutSecretValue"
         ]
         Resource = [
-          "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${each.value.var_secret_name}-*"
+          "arn:aws:secretsmanager:${local.node_region[each.key]}:${data.aws_caller_identity.current.account_id}:secret:${each.value.var_secret_name}-*"
         ]
       },
       {
@@ -85,8 +85,9 @@ resource "aws_iam_role_policy" "node_secrets" {
           "secretsmanager:DescribeSecret"
         ]
         Resource = [
-          for name in local.all_var_secret_names :
-          "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${name}-*"
+          # Each var-secret lives in its owner node's region
+          for node in var.nodes :
+          "arn:aws:secretsmanager:${coalesce(node.region, var.region)}:${data.aws_caller_identity.current.account_id}:secret:${node.var_secret_name}-*"
         ]
       }
     ]
@@ -110,7 +111,7 @@ resource "aws_iam_role_policy" "node_wallet_db" {
           "s3:PutObject"
         ]
         Resource = [
-          "${aws_s3_bucket.wallet_db.arn}/${each.value.name}/wallet.db"
+          "${aws_s3_bucket.wallet_db[local.node_region[each.key]].arn}/${each.value.name}/wallet.db"
         ]
       },
       {
@@ -120,7 +121,7 @@ resource "aws_iam_role_policy" "node_wallet_db" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.wallet_db.arn
+          aws_s3_bucket.wallet_db[local.node_region[each.key]].arn
         ]
         Condition = {
           StringLike = {

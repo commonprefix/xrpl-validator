@@ -12,7 +12,7 @@
   ansible.builtin.set_fact:
     cluster_node_keys: "{{ cluster_node_keys + [other_var.validation_public_key] }}"
   vars:
-    other_var: "{{ lookup('amazon.aws.secretsmanager_secret', hostvars[item].rippled_var_secret_name, region=ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}') | from_json }}"
+    other_var: "{{ lookup('amazon.aws.secretsmanager_secret', hostvars[item].rippled_var_secret_name, region=hostvars[item].ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}', true) | from_json }}"
   loop: "{{ other_env_hosts }}"
   when: other_var.validation_public_key is defined
   ignore_errors: true

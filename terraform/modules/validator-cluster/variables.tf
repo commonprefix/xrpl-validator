@@ -19,17 +19,30 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "regions" {
+  description = "Map of region name => network config for that region. Must include var.region (the primary region). When null, a single-region map is built from var.region/var.availability_zones/var.vpc_cidr."
+  type = map(object({
+    vpc_cidr           = string
+    availability_zones = list(string)
+    private_node_networking = optional(bool, true) # Create private node subnets + NAT in this region (only needed where private non-validator nodes live)
+    patch_schedule          = optional(string, null) # Override var.patch_schedule for this region (stagger windows across regions)
+  }))
+  default = null
+}
+
 variable "nodes" {
   description = "List of node configurations (exactly one must have validator = true)"
   type = list(object({
     name              = string
     instance_type     = string
     root_volume_size  = number
-    availability_zone = number # Index into var.availability_zones (0, 1, etc.)
+    region            = optional(string, null) # Region the node lives in (must be a key of var.regions); null = var.region
+    availability_zone = number # Index into the node's region availability_zones (0, 1, etc.)
     ledger_history    = optional(string, "6000")
     node_size         = optional(string, "medium")
     peers_max         = optional(number, 21)
     validator         = optional(bool, false) # True for the validator node (private, no SSL)
+    enable_alarm_actions = optional(bool, null) # Per-node override of var.enable_alarm_actions. A muted (false) node is also excluded from cluster-count/peer-count expectations — it's joining, not joined.
     public            = optional(bool, false) # Public nodes get public IPs and are in public subnets
     secret_name       = string                # Sensitive data (validation_seed, validator_token for validator)
     var_secret_name   = string                # Variable/public data (validation_public_key)
