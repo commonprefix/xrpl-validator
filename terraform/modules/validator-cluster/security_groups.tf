@@ -22,6 +22,18 @@ resource "aws_security_group" "node" {
     self        = true
   }
 
+  # Non-admin WebSocket API for approved consumers (e.g. peered VPCs)
+  dynamic "ingress" {
+    for_each = toset(each.value.ws_api_cidrs)
+    content {
+      description = "XRPL public WebSocket API (non-admin)"
+      from_port   = var.ws_api_port
+      to_port     = var.ws_api_port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
   egress {
     description = "HTTPS for AWS APIs (SSM, CloudWatch, S3, Secrets Manager) and dnf repos"
     from_port   = 443

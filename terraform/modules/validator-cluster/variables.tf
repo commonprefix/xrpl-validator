@@ -26,8 +26,15 @@ variable "regions" {
     availability_zones = list(string)
     private_node_networking = optional(bool, true) # Create private node subnets + NAT in this region (only needed where private non-validator nodes live)
     patch_schedule          = optional(string, null) # Override var.patch_schedule for this region (stagger windows across regions)
+    ws_api_cidrs            = optional(list(string), []) # CIDRs allowed to reach the non-admin WebSocket API port on this region's nodes
   }))
   default = null
+}
+
+variable "ws_api_port" {
+  description = "Port for the non-admin public WebSocket API (nodes with ws_api = true)"
+  type        = number
+  default     = 51233
 }
 
 variable "nodes" {
@@ -43,6 +50,7 @@ variable "nodes" {
     peers_max         = optional(number, 21)
     validator         = optional(bool, false) # True for the validator node (private, no SSL)
     enable_alarm_actions = optional(bool, null) # Per-node override of var.enable_alarm_actions. A muted (false) node is also excluded from cluster-count/peer-count expectations — it's joining, not joined.
+    ws_api            = optional(bool, false) # Serve the non-admin WebSocket API (wss, self-signed cert) on var.ws_api_port; pair with the region's ws_api_cidrs
     public            = optional(bool, false) # Public nodes get public IPs and are in public subnets
     secret_name       = string                # Sensitive data (validation_seed, validator_token for validator)
     var_secret_name   = string                # Variable/public data (validation_public_key)

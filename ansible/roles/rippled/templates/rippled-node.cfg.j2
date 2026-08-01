@@ -2,6 +2,9 @@
 port_rpc_admin_local
 port_ws_admin_local
 port_peer
+{% if rippled_ws_api | default('false') == 'true' %}
+port_ws_public
+{% endif %}
 
 [port_rpc_admin_local]
 port = 5005
@@ -21,6 +24,16 @@ ip = 0.0.0.0
 protocol = peer
 ssl_key = /etc/ssl/rippled/rippled.key
 ssl_cert = /etc/ssl/rippled/rippled.crt
+{% if rippled_ws_api | default('false') == 'true' %}
+
+# Public data API: no admin= line, so only non-privileged methods are served
+[port_ws_public]
+port = {{ rippled_ws_api_port | default('51233') }}
+ip = 0.0.0.0
+protocol = wss
+ssl_key = /etc/ssl/rippled/rippled.key
+ssl_cert = /etc/ssl/rippled/rippled.crt
+{% endif %}
 
 [node_size]
 {{ rippled_node_size }}

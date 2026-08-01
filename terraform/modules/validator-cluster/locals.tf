@@ -13,6 +13,7 @@ locals {
       availability_zones      = var.availability_zones
       private_node_networking = true
       patch_schedule          = null
+      ws_api_cidrs            = []
     }
   }
 

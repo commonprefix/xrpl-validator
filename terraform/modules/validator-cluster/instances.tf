@@ -66,7 +66,12 @@ resource "aws_instance" "node" {
       SslSubjectCN = each.value.ssl_subject != null ? each.value.ssl_subject.cn : each.value.name
       SslSubjectO  = each.value.ssl_subject != null ? each.value.ssl_subject.o : "XRPL Node"
       SslSubjectC  = each.value.ssl_subject != null ? each.value.ssl_subject.c : "US"
-    }
+    },
+    # WS API tags only when enabled (keeps other instances' tags untouched)
+    each.value.ws_api ? {
+      WsApi     = "true"
+      WsApiPort = tostring(var.ws_api_port)
+    } : {}
   )
 
   lifecycle {

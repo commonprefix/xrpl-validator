@@ -3,6 +3,11 @@ output "vpc_id" {
   value       = module.vpc[var.region].vpc_id
 }
 
+output "public_route_table_ids" {
+  description = "Map of region => public route table ID (for externally managed peering routes)"
+  value       = { for r in keys(local.regions) : r => module.vpc[r].public_route_table_ids[0] }
+}
+
 output "nodes" {
   description = "Map of all node instance information (including validator)"
   value = {
