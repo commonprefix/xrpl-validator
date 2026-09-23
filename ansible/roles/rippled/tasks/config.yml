@@ -18,6 +18,25 @@
   ignore_errors: true
   no_log: true
 
+- name: Initialize validator_master_keys
+  ansible.builtin.set_fact:
+    validator_master_keys: []
+
+# The validator's var secret carries validator_master_public_key (token-based
+# validators only). Nodes trust it alongside the UNL so they cache and relay
+# its manifest. The loop skips self, so a validator never trusts itself.
+- name: Fetch each other node's validator master key from var_secret_name
+  ansible.builtin.set_fact:
+    validator_master_keys: "{{ validator_master_keys + [other_var.validator_master_public_key] }}"
+  vars:
+    other_var: "{{ lookup('amazon.aws.secretsmanager_secret', hostvars[item].rippled_var_secret_name, region=hostvars[item].ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}', true) | from_json }}"
+  loop: "{{ other_env_hosts }}"
+  # nH... = master key. The guard rejects ephemeral/node keys (n9...) so a wrong
+  # value in the secret can never be granted validation trust on the nodes
+  when: other_var.validator_master_public_key is defined and other_var.validator_master_public_key is match('^nH')
+  ignore_errors: true
+  no_log: true
+
 - name: Deploy xrpld.cfg for validator
   ansible.builtin.template:
     src: rippled-validator.cfg.j2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update xrpld from the Ripple RPM repo and restart the service if a new
+# Update xrpld from the XRPLF RPM repo and restart the service if a new
 # version was installed. Deployed by Ansible (roles/rippled); replaces the
 # update script that the xrpld package no longer ships.
 # Run manually, one box at a time: nodes first, validator last.
@@ -22,9 +22,9 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCKDIR"' EXIT
 
-dnf -q clean expire-cache --disablerepo='*' --enablerepo=ripple-stable || true
+dnf -q clean expire-cache --disablerepo='*' --enablerepo=xrplf || true
 
-dnf -q check-update --enablerepo=ripple-stable xrpld
+dnf -q check-update --enablerepo=xrplf xrpld
 rc=$?
 if [[ $rc -eq 0 ]]; then
   log "xrpld is up to date ($(rpm -q xrpld))"
@@ -36,7 +36,7 @@ fi
 
 old=$(rpm -q xrpld)
 log "update available (current: $old) - updating"
-dnf -y update --enablerepo=ripple-stable xrpld >>"$LOG" 2>&1
+dnf -y update --enablerepo=xrplf xrpld >>"$LOG" 2>&1
 systemctl daemon-reload
 systemctl restart xrpld
 

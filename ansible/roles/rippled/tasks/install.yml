@@ -1,20 +1,33 @@
-# Install xrpld from Ripple's official RPM repository
+# Install xrpld from the XRPLF RPM repository (packages.xrplf.org).
+# Packaging moved off repos.ripple.com in Aug 2026. That repo is frozen at 3.3.0.
+# Repo/key per https://xrpl.org/docs/infrastructure/installation/update-xrpld-manually-on-rhel
 
-- name: Add Ripple repository
+- name: Import XRPLF package signing key
+  ansible.builtin.rpm_key:
+    key: https://packages.xrplf.org/xrplf.asc
+    fingerprint: B655 4167 4122 1F78 0FBC FBC9 AA84 D41A 11D2 9FA9
+    state: present
+
+- name: Add XRPLF repository
   ansible.builtin.yum_repository:
-    name: ripple-stable
-    description: XRP Ledger Packages
-    baseurl: https://repos.ripple.com/repos/rippled-rpm/stable
-    gpgkey: https://repos.ripple.com/repos/rippled-rpm/stable/repodata/repomd.xml.key
-    gpgcheck: false
+    name: xrplf
+    description: XRPLF Packages
+    baseurl: https://packages.xrplf.org/repository/rpm-stable/x86_64/
+    gpgkey: https://packages.xrplf.org/xrplf.asc
+    gpgcheck: true
     repo_gpgcheck: true
     enabled: true
+
+- name: Remove retired Ripple repository
+  ansible.builtin.yum_repository:
+    name: ripple-stable
+    state: absent
 
 - name: Install xrpld
   ansible.builtin.dnf:
     name: xrpld
     state: present
-    enablerepo: ripple-stable
+    enablerepo: xrplf
 
 - name: Ensure /var/lib/rippled is owned by xrpld
   ansible.builtin.file:

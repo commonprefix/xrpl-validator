@@ -6,3 +6,10 @@ https://vl.ripple.com
 
 [validator_list_keys]
 ED2677ABFFD1B33AC6FBC3062B71F1E8397C1505E1C42C64D11AD1B28FF73F4734
+
+{% if validator_master_keys | default([]) | length > 0 %}
+[validators]
+{% for key in validator_master_keys | sort %}
+{{ key }}
+{% endfor %}
+{% endif %}

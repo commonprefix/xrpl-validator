@@ -1,0 +1,50 @@
+# Self-heal the var secret with the validator's master public key (nH...).
+#
+# The master key is born in the offline validator-keys ceremony and reaches the
+# host inside [validator_token] (added to the private secret manually, see
+# README). Once the daemon runs with that token it reports the master key as
+# pubkey_validator, and the instance role may write its own var secret, so the
+# public half can be published automatically instead of by hand. Nodes consume
+# this field to trust the validator in validators.txt, which keeps its manifest
+# cached, persisted, and relayed (rippled >= 3.2.1 caps untrusted manifests).
+#
+# Converges over two runs when a token is first deployed: the daemon restarts
+# with the token at the end of that play, so the key publishes on the next run.
+# Seed-based validators (pubkey_validator = n9...) and stopped daemons skip.
+
+- name: Read live validator identity
+  ansible.builtin.command: xrpld server_info
+  register: rippled_server_info_raw
+  changed_when: false
+  failed_when: false
+
+- name: Extract live master public key
+  ansible.builtin.set_fact:
+    rippled_live_master_key: "{{ (rippled_server_info_raw.stdout | from_json).result.info.pubkey_validator | default('') }}"
+  when: rippled_server_info_raw.rc == 0
+
+- name: Read current var secret
+  ansible.builtin.command: >
+    aws secretsmanager get-secret-value
+    --region {{ ansible_aws_ssm_region }}
+    --secret-id "{{ rippled_var_secret_name }}"
+    --query SecretString --output text
+  register: rippled_var_secret_raw
+  changed_when: false
+  failed_when: false
+  when: rippled_live_master_key | default('') is match('^nH')
+
+- name: Publish master public key to var secret
+  ansible.builtin.command: >
+    aws secretsmanager put-secret-value
+    --region {{ ansible_aws_ssm_region }}
+    --secret-id "{{ rippled_var_secret_name }}"
+    --secret-string {{ merged_var_secret | to_json | quote }}
+  vars:
+    current_var_secret: "{{ rippled_var_secret_raw.stdout | default('{}', true) | from_json }}"
+    merged_var_secret: "{{ current_var_secret | combine({'validator_master_public_key': rippled_live_master_key}) }}"
+  when:
+    - rippled_live_master_key | default('') is match('^nH')
+    - rippled_var_secret_raw.rc | default(1) == 0
+    - current_var_secret.validator_master_public_key | default('') != rippled_live_master_key
+  changed_when: true

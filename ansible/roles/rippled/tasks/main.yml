@@ -1,4 +1,4 @@
-# Install and configure xrpld from Ripple's official RPM repository
+# Install and configure xrpld from the XRPLF RPM repository
 
 - name: Install xrpld
   ansible.builtin.include_tasks: install.yml
@@ -17,6 +17,10 @@
 
 - name: Start xrpld service
   ansible.builtin.include_tasks: service.yml
+
+- name: Publish validator master key to var secret
+  ansible.builtin.include_tasks: master_key.yml
+  when: "'role_validator' in group_names"
 
 - name: Setup CloudWatch metrics
   ansible.builtin.include_tasks: metrics.yml
