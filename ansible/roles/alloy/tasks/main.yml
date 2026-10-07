@@ -1,0 +1,121 @@
+# Grafana Alloy pushes xrpld StatsD metrics and the debug and perf logs to the
+# XRPLF Grafana (https://monitoring.xrplf.org). Opt-in per node through the
+# XrplfMonitoring tag (rippled_xrplf_monitoring). Push credentials come from
+# the Secrets Manager secret named by the XrplfMonitoringSecret tag, read
+# with the operator's credentials like the cluster keys in roles/rippled.
+# Reference: https://start.monitoring.xrplf.org/validator-guide.html
+# The matching [insight] and [perf] sections of xrpld.cfg live in roles/rippled.
+
+- name: XRPLF monitoring
+  when: rippled_xrplf_monitoring | default('false') == 'true'
+  block:
+    - name: Require the credentials secret name
+      ansible.builtin.assert:
+        that:
+          - rippled_xrplf_monitoring_secret | default('') | length > 0
+        fail_msg: XrplfMonitoringSecret tag is empty. Set xrplf_monitoring_secret_name on the Terraform module.
+
+    - name: Fetch XRPLF push credentials
+      ansible.builtin.set_fact:
+        alloy_push_credentials: "{{ lookup('amazon.aws.secretsmanager_secret', rippled_xrplf_monitoring_secret, region=ansible_aws_ssm_region) | from_json }}"
+      no_log: true
+
+    - name: Require username and password in the secret
+      ansible.builtin.assert:
+        that:
+          - alloy_push_credentials.username | default('') | length > 0
+          - alloy_push_credentials.password | default('') | length > 0
+        fail_msg: "{{ rippled_xrplf_monitoring_secret }} must contain username and password"
+      no_log: true
+
+    # The validator publishes its master public key (nH...) to its own var
+    # secret (roles/rippled master_key.yml). Only ever the public half.
+    - name: Read own validator master public key
+      ansible.builtin.set_fact:
+        alloy_validator_master_key: "{{ (lookup('amazon.aws.secretsmanager_secret', rippled_var_secret_name, region=ansible_aws_ssm_region, on_denied='skip', on_missing='skip') | default('{}', true) | from_json).validator_master_public_key | default('') }}"
+      when: tags.Validator == 'true'
+
+    - name: Import Grafana package signing key
+      ansible.builtin.rpm_key:
+        key: https://rpm.grafana.com/gpg.key
+        fingerprint: B53A E77B ADB6 30A6 8304 6005 963F A277 1045 8545
+        state: present
+
+    - name: Add Grafana repository
+      ansible.builtin.yum_repository:
+        name: grafana
+        description: Grafana
+        baseurl: https://rpm.grafana.com
+        gpgkey: https://rpm.grafana.com/gpg.key
+        gpgcheck: true
+        repo_gpgcheck: true
+        sslverify: true
+        enabled: true
+
+    - name: Install Alloy
+      ansible.builtin.dnf:
+        name: alloy
+        state: present
+        enablerepo: grafana
+
+    - name: Let alloy read the xrpld logs
+      ansible.builtin.user:
+        name: alloy
+        groups: xrpld
+        append: true
+
+    - name: Alloy config directory
+      ansible.builtin.file:
+        path: /etc/alloy
+        state: directory
+        owner: root
+        group: alloy
+        mode: "0750"
+
+    - name: Deploy the shared XRPLF telemetry module
+      ansible.builtin.copy:
+        src: xrplf.alloy
+        dest: /etc/alloy/xrplf.alloy
+        owner: root
+        group: alloy
+        mode: "0644"
+      notify: Restart alloy
+
+    - name: Deploy the StatsD mapping
+      ansible.builtin.copy:
+        src: statsd-mapping.yml
+        dest: /etc/alloy/statsd-mapping.yml
+        owner: root
+        group: alloy
+        mode: "0644"
+      notify: Restart alloy
+
+    # copy with content writes the string as is, so no trailing newline
+    - name: Deploy the push password
+      ansible.builtin.copy:
+        content: "{{ alloy_push_credentials.password }}"
+        dest: /etc/alloy/xrpl-push
+        owner: root
+        group: alloy
+        mode: "0640"
+      no_log: true
+      notify: Restart alloy
+
+    - name: Deploy the host config
+      ansible.builtin.template:
+        src: config.alloy.j2
+        dest: /etc/alloy/config.alloy
+        owner: root
+        group: alloy
+        mode: "0640"
+      notify: Restart alloy
+
+    - name: Validate the Alloy config
+      ansible.builtin.command: alloy validate /etc/alloy/config.alloy
+      changed_when: false
+
+    - name: Alloy is enabled and running
+      ansible.builtin.systemd:
+        name: alloy
+        enabled: true
+        state: started

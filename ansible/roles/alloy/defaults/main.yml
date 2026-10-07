@@ -1,0 +1,16 @@
+# XRPLF monitoring push endpoint
+alloy_push_host: push.monitoring.xrplf.org
+
+# node_exporter style host metrics. Off, the CloudWatch agent already covers them.
+alloy_host_metrics: false
+
+# Regex of hosts to redact from the shipped logs. Default: every private IP of
+# this environment's nodes, so the cluster topology does not leave the hosts.
+# Dots are bracketed because the value lands inside an Alloy string literal.
+alloy_redact_host: "{{ groups['env_' ~ env_name] | default([]) | map('extract', hostvars, 'private_ip') | select('defined') | map('replace', '.', '[.]') | join('|') | default('^$', true) }}"
+
+# Regex of public keys to redact from the shipped logs
+alloy_redact_pubkey: "^$"
+
+# Set on the validator from its var secret, empty elsewhere
+alloy_validator_master_key: ""

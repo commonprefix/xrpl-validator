@@ -51,6 +51,7 @@ variable "nodes" {
     validator         = optional(bool, false) # True for the validator node (private, no SSL)
     enable_alarm_actions = optional(bool, null) # Per-node override of var.enable_alarm_actions. A muted (false) node is also excluded from cluster-count/peer-count expectations — it's joining, not joined.
     ws_api            = optional(bool, false) # Serve the non-admin WebSocket API (wss, self-signed cert) on var.ws_api_port; pair with the region's ws_api_cidrs
+    xrplf_monitoring  = optional(bool, false) # Push xrpld metrics and logs to XRPLF Grafana via Alloy. Needs var.xrplf_monitoring_secret_name
     public            = optional(bool, false) # Public nodes get public IPs and are in public subnets
     secret_name       = string                # Sensitive data (validation_seed, validator_token for validator)
     var_secret_name   = string                # Variable/public data (validation_public_key)
@@ -143,6 +144,12 @@ variable "alarm_thresholds" {
 
 variable "discord_webhook_secret_name" {
   description = "Name of the Secrets Manager secret containing the Discord webhook URL. Secret should have format: {\"webhook_url\": \"https://discord.com/api/webhooks/...\"}"
+  type        = string
+  default     = null
+}
+
+variable "xrplf_monitoring_secret_name" {
+  description = "Name of the Secrets Manager secret holding the XRPLF monitoring push credentials, format {\"username\": \"...\", \"password\": \"...\"}. Read by Ansible for nodes with xrplf_monitoring = true"
   type        = string
   default     = null
 }

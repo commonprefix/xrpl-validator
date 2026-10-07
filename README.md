@@ -275,6 +275,7 @@ Each node in the `nodes` list accepts:
 | `ssl_subject` | No | SSL certificate details for peer connections. Required for non-validator nodes |
 | `ledger_history` | No | Number of ledgers to retain. Default: `6000` |
 | `node_size` | No | `rippled` node size (tiny, small, medium, large, huge). Default: `medium` |
+| `xrplf_monitoring` | No | Push xrpld metrics and logs to the XRPLF Grafana via Grafana Alloy. Needs `xrplf_monitoring_secret_name`. Default: `false` |
 | `domain` | No | Domain for validator verification. Only valid on the validator node. |
 | `hosted_zone_id` | No | Route53 hosted zone ID. Requires `domain` to be set. |
 
@@ -291,6 +292,7 @@ Each node in the `nodes` list accepts:
 | `rippled_log_max_size_mb` | Max `rippled` log size before rotation | `1024` |
 | `rippled_log_max_files` | Rotated log files to keep | `10` |
 | `enable_alarm_actions` | Enable alarm actions. Set `false` for initial deployment. | `true` |
+| `xrplf_monitoring_secret_name` | Secrets Manager secret with the XRPLF monitoring push credentials, `{"username": "...", "password": "..."}`. Required when any node sets `xrplf_monitoring`. | `null` |
 | `ansible_role_principals` | IAM ARNs that can assume Ansible role | `[]` |
 | `alarm_thresholds` | Alarm threshold configuration (see below) | See defaults |
 
@@ -398,6 +400,40 @@ aws ssm start-session --region <region> --target <instance-id>
 2. `terraform apply`
 3. Configure new node: `ansible-playbook playbooks/site.yml -l name_myenv_node_X`
 4. Update cluster config on all nodes: `ansible-playbook playbooks/site.yml -l env_myenv`
+
+## XRPLF monitoring (optional)
+
+Pushes xrpld StatsD metrics and the debug and perf logs of selected nodes to
+the XRP Ledger Foundation Grafana at https://monitoring.xrplf.org through
+Grafana Alloy (`roles/alloy`). Guide:
+https://start.monitoring.xrplf.org/validator-guide.html
+
+1. Get push credentials from the XRPLF and store them, replicated to every
+   region that will have a flagged node:
+   ```bash
+   aws secretsmanager create-secret --region <region> \
+     --name rippled/<env>/xrplf-monitoring \
+     --secret-string '{"username": "...", "password": "..."}'
+   ```
+2. Set `xrplf_monitoring_secret_name` on the module and `xrplf_monitoring = true`
+   on the node. Apply: this only changes tags on that instance.
+3. Run the playbook for that node with `-e rippled_restart=false`. Alloy is
+   installed and started, and the `[insight]` and `[perf]` sections land in
+   `xrpld.cfg` without restarting xrpld. Alloy ships the logs right away.
+4. Restart xrpld when convenient (`sudo systemctl restart xrpld`). StatsD
+   metrics appear after that. The validator's master public key is attached
+   from its var secret.
+
+Shipped logs are redacted of the environment's private IPs
+(`alloy_redact_host`). Host metrics stay off (`alloy_host_metrics`), the
+CloudWatch agent covers them. The shared module `files/xrplf.alloy` is vendored
+from `https://push.monitoring.xrplf.org/alloy/config`, refresh it by hand when
+the XRPLF publishes a new one.
+
+Rotate credentials: update the secret and re-run the playbook. Alloy restarts,
+xrpld does not. Disable: set the flag to false, apply, re-run the playbook
+(drops the xrpld sections, restarts xrpld), then `dnf remove alloy` and remove
+`/etc/alloy` on the host.
 
 ## Upgrading xrpld
 

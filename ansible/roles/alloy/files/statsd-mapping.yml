@@ -1,0 +1,12 @@
+# StatsD metric filtering for the XRPLF monitoring pipeline. Verbatim from
+# https://start.monitoring.xrplf.org/validator-guide.html
+defaults:
+  match_type: regex
+
+mappings:
+  - match: '^xrpld[.](.+)$'
+    name: 'xrpld_${1}'
+
+  - match: '.*'
+    action: drop
+    name: 'dropped'

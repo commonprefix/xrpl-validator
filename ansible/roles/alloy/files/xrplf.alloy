@@ -1,0 +1,458 @@
+// Managed by xrpl-monitoring Alloy installer.
+// Shared XRPL validator telemetry module.
+
+declare "xrplf" {
+	argument "node" {
+		comment = "Identifier of the node on which xrpld runs."
+	}
+
+	argument "validator_master_key" {
+		comment  = "Optional XRPL validator master public key added to the up metric for network-level correlation."
+		optional = true
+		default  = ""
+	}
+
+	argument "service_name" {
+		comment  = "Service name label used for Grafana queries."
+		optional = true
+		default  = "xrpld"
+	}
+
+	argument "job" {
+		comment  = "Job label used for Grafana queries."
+		optional = true
+		default  = "xrpld"
+	}
+
+	argument "push_host" {
+		comment = "xrpl-monitoring auth-proxy host for the selected environment."
+	}
+
+	argument "username" {
+		comment = "Basic Auth username accepted by the xrpl-monitoring auth-proxy."
+	}
+
+	argument "password" {
+		comment = "Basic Auth password accepted by the xrpl-monitoring auth-proxy."
+	}
+
+	argument "log_debug" {
+		comment = "Path where the xrpld debug log is written to."
+	}
+
+	argument "log_perf" {
+		comment = "Path where the xrpld perf log is written to."
+	}
+
+	argument "statsd_listen" {
+		comment  = "Local address where Alloy listens for xrpld StatsD metrics."
+		optional = true
+		default  = "127.0.0.1:9125"
+	}
+
+	argument "statsd_mapping_path" {
+		comment  = "Path to the StatsD mapping config."
+		optional = true
+		default  = "/etc/alloy/statsd-mapping.yml"
+	}
+
+	argument "statsd_relay_addr" {
+		comment  = "Optional existing StatsD UDP endpoint. Alloy relays the raw xrpld packets there unchanged. The statsd-mapping.yml rename and drop rules do not apply to the relayed stream, only to the Mimir remote_write path."
+		optional = true
+		default  = ""
+	}
+
+	argument "host_metrics_enabled" {
+		comment  = "Whether to collect and send basic host metrics."
+		optional = true
+		default  = false
+	}
+
+	argument "host_metrics_rootfs_path" {
+		comment  = "Root filesystem path used by the host metrics exporter."
+		optional = true
+		default  = "/"
+	}
+
+	argument "host_metrics_procfs_path" {
+		comment  = "procfs path used by the host metrics exporter."
+		optional = true
+		default  = "/proc"
+	}
+
+	argument "host_metrics_sysfs_path" {
+		comment  = "sysfs path used by the host metrics exporter."
+		optional = true
+		default  = "/sys"
+	}
+
+	// argument "otlp_http_listen" {
+	// 	comment  = "Local address where Alloy listens for xrpld OTLP HTTP traces."
+	// 	optional = true
+	// 	default  = "127.0.0.1:4318"
+	// }
+
+	argument "host" {
+		comment  = "Optional expression matching the hostname/domain of the node to redact."
+		optional = true
+		default  = "^$"
+	}
+
+	argument "pubkey" {
+		comment  = "Optional expression matching the public key of the node to redact."
+		optional = true
+		default  = "^$"
+	}
+
+	// Mimir settings for StatsD metrics.
+	prometheus.exporter.statsd "metrics" {
+		listen_udp          = argument.statsd_listen.value
+		listen_tcp          = ""
+		mapping_config_path = argument.statsd_mapping_path.value
+		relay_addr          = argument.statsd_relay_addr.value
+	}
+
+	prometheus.scrape "metrics" {
+		forward_to      = [prometheus.relabel.metrics.receiver]
+		targets         = prometheus.exporter.statsd.metrics.targets
+		scrape_interval = "10s"
+	}
+
+	prometheus.relabel "metrics" {
+		forward_to = [prometheus.remote_write.xrplf.receiver]
+
+		// The monitoring backend identifies the validator from the Basic Auth
+		// credentials. This config adds node and service labels to all metrics.
+		rule {
+			target_label = "node"
+			replacement  = argument.node.value
+		}
+
+		rule {
+			target_label = "service_name"
+			replacement  = argument.service_name.value
+		}
+
+		rule {
+			target_label = "job"
+			replacement  = argument.job.value
+		}
+
+		// The master public key is opt-in metadata used only to correlate the
+		// collector's up series with public XRPL network validator statistics.
+		rule {
+			source_labels = ["__name__"]
+			regex         = "up"
+			target_label  = "validator_master_key"
+			replacement   = argument.validator_master_key.value
+		}
+	}
+
+	// Basic host metrics use a separate scrape and label path so their up series
+	// cannot satisfy the xrpld telemetry alert.
+	prometheus.exporter.unix "host" {
+		set_collectors = [
+			"cpu",
+			"diskstats",
+			"filesystem",
+			"loadavg",
+			"meminfo",
+			"netdev",
+			"stat",
+			"time",
+			"uname",
+			"vmstat",
+		]
+
+		rootfs_path = argument.host_metrics_rootfs_path.value
+		procfs_path = argument.host_metrics_procfs_path.value
+		sysfs_path  = argument.host_metrics_sysfs_path.value
+	}
+
+	discovery.relabel "host" {
+		targets = prometheus.exporter.unix.host.targets
+
+		rule {
+			target_label = "__tmp_host_metrics_enabled"
+			replacement  = string.format("%t", argument.host_metrics_enabled.value)
+		}
+
+		rule {
+			source_labels = ["__tmp_host_metrics_enabled"]
+			regex         = "true"
+			action        = "keep"
+		}
+
+		rule {
+			target_label = "node"
+			replacement  = argument.node.value
+		}
+
+		rule {
+			target_label = "instance"
+			replacement  = argument.node.value
+		}
+
+		rule {
+			target_label = "service_name"
+			replacement  = "node_exporter"
+		}
+
+		rule {
+			target_label = "job"
+			replacement  = "node_exporter"
+		}
+	}
+
+	prometheus.scrape "host" {
+		targets         = discovery.relabel.host.output
+		forward_to      = [prometheus.relabel.host.receiver]
+		scrape_interval = "15s"
+	}
+
+	prometheus.relabel "host" {
+		forward_to = [prometheus.remote_write.xrplf.receiver]
+
+		// Disk information can contain serial numbers and WWNs from udev.
+		rule {
+			source_labels = ["__name__"]
+			regex         = "node_disk_info"
+			action        = "drop"
+		}
+
+		// Use the configured node label instead of the machine hostname.
+		rule {
+			regex  = "^(nodename|domainname)$"
+			action = "labeldrop"
+		}
+	}
+
+	prometheus.remote_write "xrplf" {
+		endpoint {
+			url = string.format("https://%s/mimir/api/v1/push", argument.push_host.value)
+
+			basic_auth {
+				username = argument.username.value
+				password = argument.password.value
+			}
+		}
+	}
+
+	// Loki settings for xrpld logs.
+	loki.write "xrplf" {
+		endpoint {
+			url = string.format("https://%s/loki/api/v1/push", argument.push_host.value)
+
+			basic_auth {
+				username = argument.username.value
+				password = argument.password.value
+			}
+		}
+	}
+
+	local.file_match "debug" {
+		path_targets = [{"__path__" = argument.log_debug.value}]
+		sync_period  = "5s"
+	}
+
+	loki.source.file "debug" {
+		forward_to    = [loki.process.debug.receiver]
+		targets       = local.file_match.debug.targets
+		tail_from_end = true
+	}
+
+	loki.process "debug" {
+		forward_to = [loki.write.xrplf.receiver]
+
+		// Join continuation lines with the preceding timestamped xrpld log entry.
+		stage.multiline {
+			firstline     = "^\\d{4}-\\w{3}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+ \\w{3} \\S+?:\\S+? "
+			max_wait_time = "3s"
+		}
+
+		// Parse the log line into components.
+		stage.regex {
+			expression = "(?s)^(?P<timestamp>\\d{4}-\\w{3}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+ \\w{3}) (?P<module>\\S+?):(?P<level>\\S+?) (?P<message>.*)$"
+		}
+
+		// Drop useless messages.
+		stage.drop {
+			source     = "message"
+			expression = "^\\s*$"
+		}
+
+		stage.drop {
+			source     = "message"
+			expression = "Untrusted manifest in cache not saved to db"
+		}
+
+		// Use the timestamp in the log line instead of the current time.
+		stage.timestamp {
+			source = "timestamp"
+			format = "2006-Jan-02 15:04:05.999999 MST"
+		}
+
+		// Redact sensitive data in the message. The expression must contain a
+		// capture group, as only values matching the regex within the group are redacted.
+		stage.replace {
+			source = "message"
+
+			// Redact IPv4 addresses.
+			expression = "((\\[::ffff:)?\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\]?)"
+			replace    = "***ipv4***"
+		}
+
+		stage.replace {
+			source = "message"
+
+			// Redact IPv6 addresses. Comprehensive regexes to match IPv6 addresses use
+			// look-ahead, look-behind, or look-around, but that is not supported in Alloy,
+			// so this intentionally uses a simpler regex.
+			expression = "([[:xdigit:]]{1,4}:([[:xdigit:]]{0,4}:){2,}[[:xdigit:]]{1,4})"
+			replace    = "***ipv6***"
+		}
+
+		stage.replace {
+			source     = "message"
+			expression = string.format("(%s)", argument.host.value)
+			replace    = "***host***"
+		}
+
+		stage.replace {
+			source     = "message"
+			expression = string.format("(%s)", argument.pubkey.value)
+			replace    = "***pubkey***"
+		}
+
+		// Remap the log levels to values Grafana recognizes.
+		stage.template {
+			source   = "level"
+			template = "{{ if eq .Value \"TRC\" }}TRACE{{ else if eq .Value \"DBG\" }}DEBUG{{ else if eq .Value \"NFO\" }}INFO{{ else if eq .Value \"WRN\" }}WARN{{ else if eq .Value \"ERR\" }}ERROR{{ else if eq .Value \"FTL\" }}FATAL{{ else }}{{ .Value }}{{ end }}"
+		}
+
+		// Add the module and level back to the message into a new variable.
+		stage.template {
+			source   = "line"
+			template = "{{ .module }}:{{ .level }} {{ .message }}"
+		}
+
+		// Only export the combined log line as output.
+		stage.output {
+			source = "line"
+		}
+
+		// Only export the module and level variables as labels.
+		stage.labels {
+			values = {
+				level  = "",
+				module = "",
+			}
+		}
+
+		// The monitoring backend identifies the validator from the Basic Auth
+		// credentials. Keep only node, service, and file labels here.
+		stage.static_labels {
+			values = {
+				node         = argument.node.value,
+				service_name = argument.service_name.value,
+				job          = argument.job.value,
+				file         = "debug",
+			}
+		}
+	}
+
+	// Loki settings for perf logs.
+	local.file_match "perf" {
+		path_targets = [{"__path__" = argument.log_perf.value}]
+		sync_period  = "5s"
+	}
+
+	loki.source.file "perf" {
+		forward_to    = [loki.process.perf.receiver]
+		targets       = local.file_match.perf.targets
+		tail_from_end = true
+	}
+
+	loki.process "perf" {
+		forward_to = [loki.write.xrplf.receiver]
+
+		// Use the timestamp in the log line instead of the current time.
+		stage.json {
+			expressions = {timestamp = "time"}
+		}
+
+		stage.timestamp {
+			source = "timestamp"
+			format = "2006-Jan-02 15:04:05.9 MST"
+		}
+
+		// Redact sensitive data in the message. The expression must contain a
+		// capture group, as only values matching the regex within the group are redacted.
+		stage.replace {
+			expression = string.format("(%s)", argument.host.value)
+			replace    = "***host***"
+		}
+
+		// The monitoring backend identifies the validator from the Basic Auth
+		// credentials. Treat the perf log lines as TRACE log-level messages.
+		stage.static_labels {
+			values = {
+				node         = argument.node.value,
+				service_name = argument.service_name.value,
+				job          = argument.job.value,
+				file         = "perf",
+				level        = "TRACE",
+			}
+		}
+	}
+
+	// Tempo trace settings. Enable this section once xrpld supports OTLP traces.
+	// otelcol.receiver.otlp "traces" {
+	// 	http {
+	// 		endpoint = argument.otlp_http_listen.value
+	// 	}
+	//
+	// 	output {
+	// 		traces = [otelcol.processor.transform.traces.input]
+	// 	}
+	// }
+	//
+	// otelcol.processor.transform "traces" {
+	// 	error_mode = "ignore"
+	//
+	// 	trace_statements {
+	// 		context    = "resource"
+	// 		statements = [
+	// 			string.format("set(attributes[\"service.name\"], %q)", argument.service_name.value),
+	// 			string.format("set(attributes[\"job\"], %q)", argument.job.value),
+	// 			string.format("set(attributes[\"node\"], %q)", argument.node.value),
+	// 		]
+	// 	}
+	//
+	// 	output {
+	// 		traces = [otelcol.processor.batch.traces.input]
+	// 	}
+	// }
+	//
+	// otelcol.processor.batch "traces" {
+	// 	output {
+	// 		traces = [otelcol.exporter.otlphttp.traces.input]
+	// 	}
+	// }
+	//
+	// otelcol.auth.basic "traces" {
+	// 	client_auth {
+	// 		username = argument.username.value
+	// 		password = argument.password.value
+	// 	}
+	// }
+	//
+	// otelcol.exporter.otlphttp "traces" {
+	// 	client {
+	// 		endpoint = string.format("https://%s/tempo/v1/traces", argument.push_host.value)
+	// 		auth     = otelcol.auth.basic.traces.handler
+	// 	}
+	//
+	// 	traces_endpoint = string.format("https://%s/tempo/v1/traces", argument.push_host.value)
+	// }
+}

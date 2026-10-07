@@ -1,0 +1,35 @@
+// XRPLF validator monitoring. Managed by Ansible (roles/alloy).
+// https://start.monitoring.xrplf.org/validator-guide.html
+
+import.file "xrpl_monitoring" {
+  filename = "/etc/alloy/xrplf.alloy"
+}
+
+local.file "xrpl_monitoring_password" {
+  filename  = "/etc/alloy/xrpl-push"
+  is_secret = true
+}
+
+xrpl_monitoring.xrplf "default" {
+  node                 = "{{ tags.Name }}"
+  validator_master_key = "{{ alloy_validator_master_key }}"
+  host_metrics_enabled = {{ alloy_host_metrics | lower }}
+
+  push_host = "{{ alloy_push_host }}"
+  username  = "{{ alloy_push_credentials.username }}"
+  password  = local.file.xrpl_monitoring_password.content
+
+  log_debug = "/var/log/rippled/debug.log"
+  log_perf  = "/var/log/rippled/perf.log"
+
+  statsd_listen     = "127.0.0.1:9125"
+  statsd_relay_addr = ""
+
+  host   = "{{ alloy_redact_host }}"
+  pubkey = "{{ alloy_redact_pubkey }}"
+}
+
+logging {
+  format = "logfmt"
+  level  = "info"
+}

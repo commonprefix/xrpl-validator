@@ -38,3 +38,5 @@ compose:
   rippled_log_max_size_mb: tags.LogMaxSizeMB | default('1024')
   rippled_log_max_files: tags.LogMaxFiles | default('10')
   rippled_wallet_db_s3_bucket: tags.WalletDbS3Bucket
+  rippled_xrplf_monitoring: tags.XrplfMonitoring | default('false')
+  rippled_xrplf_monitoring_secret: tags.XrplfMonitoringSecret | default('')

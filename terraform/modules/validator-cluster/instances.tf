@@ -71,10 +71,20 @@ resource "aws_instance" "node" {
     each.value.ws_api ? {
       WsApi     = "true"
       WsApiPort = tostring(var.ws_api_port)
+    } : {},
+    # XRPLF monitoring tags only when enabled. Ansible reads both
+    each.value.xrplf_monitoring ? {
+      XrplfMonitoring       = "true"
+      XrplfMonitoringSecret = var.xrplf_monitoring_secret_name
     } : {}
   )
 
   lifecycle {
     ignore_changes = [ami]
+
+    precondition {
+      condition     = !each.value.xrplf_monitoring || var.xrplf_monitoring_secret_name != null
+      error_message = "Node ${each.value.name} has xrplf_monitoring = true but xrplf_monitoring_secret_name is not set."
+    }
   }
 }

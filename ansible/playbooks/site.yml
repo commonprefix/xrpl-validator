@@ -16,3 +16,4 @@
     - chrony
     - cloudwatch_agent
     - rippled
+    - alloy

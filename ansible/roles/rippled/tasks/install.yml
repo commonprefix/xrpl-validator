@@ -85,7 +85,7 @@
     dest: /etc/logrotate.d/rippled
     mode: "0644"
     content: |
-      /var/log/rippled/debug.log {
+      /var/log/rippled/debug.log{% if rippled_xrplf_monitoring | default('false') == 'true' %} /var/log/rippled/perf.log{% endif %} {
           size {{ rippled_log_max_size_mb }}M
           rotate {{ rippled_log_max_files }}
           compress

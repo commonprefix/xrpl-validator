@@ -31,6 +31,18 @@ online_delete={{ rippled_ledger_history }}
 [debug_logfile]
 /var/log/rippled/debug.log
 
+{% if rippled_xrplf_monitoring | default('false') == 'true' %}
+# XRPLF monitoring (roles/alloy): StatsD metrics and the perf log for Grafana Alloy
+[insight]
+server=statsd
+address=127.0.0.1:9125
+prefix=xrpld
+
+[perf]
+perf_log=/var/log/rippled/perf.log
+log_interval=2
+
+{% endif %}
 [sntp_servers]
 time.windows.com
 time.apple.com
